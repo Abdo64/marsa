@@ -90,12 +90,12 @@ BEGIN
         BLOCK "040904e4"
         BEGIN
             VALUE "CompanyName", "dev.marsa" "\0"
-            VALUE "FileDescription", "marsa" "\0"
+            VALUE "FileDescription", "Marsa SSH and SFTP client" "\0"
             VALUE "FileVersion", VERSION_AS_STRING "\0"
             VALUE "InternalName", "marsa" "\0"
-            VALUE "LegalCopyright", "Copyright (C) 2026 dev.marsa. All rights reserved." "\0"
+            VALUE "LegalCopyright", "Copyright (C) 2026 Marsa contributors. MIT License." "\0"
             VALUE "OriginalFilename", "marsa.exe" "\0"
-            VALUE "ProductName", "marsa" "\0"
+            VALUE "ProductName", "Marsa" "\0"
             VALUE "ProductVersion", VERSION_AS_STRING "\0"
         END
     END

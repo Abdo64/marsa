@@ -5,8 +5,8 @@ int nowMs() => DateTime.now().millisecondsSinceEpoch;
 /// A synced vault record. [updatedAt] drives last-write-wins merging.
 abstract class Rec {
   Rec(String? id, int? updatedAt)
-      : id = id ?? newId(),
-        updatedAt = updatedAt ?? nowMs();
+    : id = id ?? newId(),
+      updatedAt = updatedAt ?? nowMs();
 
   final String id;
   int updatedAt;
@@ -30,22 +30,24 @@ class Host extends Rec {
     this.group = '',
     this.tags = const [],
     this.jumpHostId,
+    this.useDeviceKeys = false,
   }) : super(id, updatedAt);
 
   factory Host.fromJson(Map<String, dynamic> j) => Host(
-        id: j['id'] as String,
-        updatedAt: j['u'] as int,
-        label: j['label'] as String? ?? '',
-        address: j['address'] as String? ?? '',
-        port: j['port'] as int? ?? 22,
-        username: j['username'] as String? ?? '',
-        password: j['password'] as String? ?? '',
-        keyId: j['keyId'] as String?,
-        identityId: j['identityId'] as String?,
-        group: j['group'] as String? ?? '',
-        tags: (j['tags'] as List? ?? const []).cast<String>(),
-        jumpHostId: j['jumpHostId'] as String?,
-      );
+    id: j['id'] as String,
+    updatedAt: j['u'] as int,
+    label: j['label'] as String? ?? '',
+    address: j['address'] as String? ?? '',
+    port: j['port'] as int? ?? 22,
+    username: j['username'] as String? ?? '',
+    password: j['password'] as String? ?? '',
+    keyId: j['keyId'] as String?,
+    identityId: j['identityId'] as String?,
+    group: j['group'] as String? ?? '',
+    tags: (j['tags'] as List? ?? const []).cast<String>(),
+    jumpHostId: j['jumpHostId'] as String?,
+    useDeviceKeys: j['deviceKeys'] as bool? ?? false,
+  );
 
   String label;
   String address;
@@ -60,21 +62,26 @@ class Host extends Rec {
   List<String> tags;
   String? jumpHostId;
 
+  /// Sign in with whatever keys are in `~/.ssh` on the device connecting,
+  /// instead of a key stored in the vault.
+  bool useDeviceKeys;
+
   String get title => label.isEmpty ? address : label;
 
   @override
   Map<String, dynamic> fields() => {
-        'label': label,
-        'address': address,
-        'port': port,
-        'username': username,
-        'password': password,
-        'keyId': keyId,
-        'identityId': identityId,
-        'group': group,
-        'tags': tags,
-        'jumpHostId': jumpHostId,
-      };
+    'label': label,
+    'address': address,
+    'port': port,
+    'username': username,
+    'password': password,
+    'keyId': keyId,
+    'identityId': identityId,
+    'group': group,
+    'tags': tags,
+    'jumpHostId': jumpHostId,
+    'deviceKeys': useDeviceKeys,
+  };
 }
 
 class SshKey extends Rec {
@@ -88,13 +95,13 @@ class SshKey extends Rec {
   }) : super(id, updatedAt);
 
   factory SshKey.fromJson(Map<String, dynamic> j) => SshKey(
-        id: j['id'] as String,
-        updatedAt: j['u'] as int,
-        label: j['label'] as String? ?? '',
-        privateKey: j['privateKey'] as String? ?? '',
-        publicKey: j['publicKey'] as String? ?? '',
-        type: j['type'] as String? ?? '',
-      );
+    id: j['id'] as String,
+    updatedAt: j['u'] as int,
+    label: j['label'] as String? ?? '',
+    privateKey: j['privateKey'] as String? ?? '',
+    publicKey: j['publicKey'] as String? ?? '',
+    type: j['type'] as String? ?? '',
+  );
 
   String label;
 
@@ -107,11 +114,11 @@ class SshKey extends Rec {
 
   @override
   Map<String, dynamic> fields() => {
-        'label': label,
-        'privateKey': privateKey,
-        'publicKey': publicKey,
-        'type': type,
-      };
+    'label': label,
+    'privateKey': privateKey,
+    'publicKey': publicKey,
+    'type': type,
+  };
 }
 
 class Identity extends Rec {
@@ -125,13 +132,13 @@ class Identity extends Rec {
   }) : super(id, updatedAt);
 
   factory Identity.fromJson(Map<String, dynamic> j) => Identity(
-        id: j['id'] as String,
-        updatedAt: j['u'] as int,
-        label: j['label'] as String? ?? '',
-        username: j['username'] as String? ?? '',
-        password: j['password'] as String? ?? '',
-        keyId: j['keyId'] as String?,
-      );
+    id: j['id'] as String,
+    updatedAt: j['u'] as int,
+    label: j['label'] as String? ?? '',
+    username: j['username'] as String? ?? '',
+    password: j['password'] as String? ?? '',
+    keyId: j['keyId'] as String?,
+  );
 
   String label;
   String username;
@@ -142,23 +149,23 @@ class Identity extends Rec {
 
   @override
   Map<String, dynamic> fields() => {
-        'label': label,
-        'username': username,
-        'password': password,
-        'keyId': keyId,
-      };
+    'label': label,
+    'username': username,
+    'password': password,
+    'keyId': keyId,
+  };
 }
 
 class Snippet extends Rec {
   Snippet({String? id, int? updatedAt, this.label = '', this.command = ''})
-      : super(id, updatedAt);
+    : super(id, updatedAt);
 
   factory Snippet.fromJson(Map<String, dynamic> j) => Snippet(
-        id: j['id'] as String,
-        updatedAt: j['u'] as int,
-        label: j['label'] as String? ?? '',
-        command: j['command'] as String? ?? '',
-      );
+    id: j['id'] as String,
+    updatedAt: j['u'] as int,
+    label: j['label'] as String? ?? '',
+    command: j['command'] as String? ?? '',
+  );
 
   String label;
   String command;
@@ -183,19 +190,19 @@ class PortForward extends Rec {
   }) : super(id, updatedAt);
 
   factory PortForward.fromJson(Map<String, dynamic> j) => PortForward(
-        id: j['id'] as String,
-        updatedAt: j['u'] as int,
-        label: j['label'] as String? ?? '',
-        kind: ForwardKind.values.firstWhere(
-          (k) => k.name == j['kind'],
-          orElse: () => ForwardKind.local,
-        ),
-        hostId: j['hostId'] as String? ?? '',
-        bindHost: j['bindHost'] as String? ?? '127.0.0.1',
-        bindPort: j['bindPort'] as int? ?? 0,
-        destHost: j['destHost'] as String? ?? '127.0.0.1',
-        destPort: j['destPort'] as int? ?? 0,
-      );
+    id: j['id'] as String,
+    updatedAt: j['u'] as int,
+    label: j['label'] as String? ?? '',
+    kind: ForwardKind.values.firstWhere(
+      (k) => k.name == j['kind'],
+      orElse: () => ForwardKind.local,
+    ),
+    hostId: j['hostId'] as String? ?? '',
+    bindHost: j['bindHost'] as String? ?? '127.0.0.1',
+    bindPort: j['bindPort'] as int? ?? 0,
+    destHost: j['destHost'] as String? ?? '127.0.0.1',
+    destPort: j['destPort'] as int? ?? 0,
+  );
 
   String label;
   ForwardKind kind;
@@ -209,14 +216,14 @@ class PortForward extends Rec {
 
   @override
   Map<String, dynamic> fields() => {
-        'label': label,
-        'kind': kind.name,
-        'hostId': hostId,
-        'bindHost': bindHost,
-        'bindPort': bindPort,
-        'destHost': destHost,
-        'destPort': destPort,
-      };
+    'label': label,
+    'kind': kind.name,
+    'hostId': hostId,
+    'bindHost': bindHost,
+    'bindPort': bindPort,
+    'destHost': destHost,
+    'destPort': destPort,
+  };
 }
 
 /// A pinned server host key. The id is `address:port` so the same server
@@ -230,11 +237,11 @@ class KnownHost extends Rec {
   }) : super(id, updatedAt);
 
   factory KnownHost.fromJson(Map<String, dynamic> j) => KnownHost(
-        id: j['id'] as String,
-        updatedAt: j['u'] as int,
-        type: j['type'] as String? ?? '',
-        fingerprint: j['fingerprint'] as String? ?? '',
-      );
+    id: j['id'] as String,
+    updatedAt: j['u'] as int,
+    type: j['type'] as String? ?? '',
+    fingerprint: j['fingerprint'] as String? ?? '',
+  );
 
   String type;
   String fingerprint;
@@ -269,8 +276,10 @@ class Table<T extends Rec> {
   // made here wins even if another device's clock runs ahead.
   int _after(String id) {
     var t = nowMs();
-    final prev = [_items[id]?.updatedAt ?? 0, _tombs[id] ?? 0]
-        .reduce((a, b) => a > b ? a : b);
+    final prev = [
+      _items[id]?.updatedAt ?? 0,
+      _tombs[id] ?? 0,
+    ].reduce((a, b) => a > b ? a : b);
     if (t <= prev) t = prev + 1;
     return t;
   }
@@ -294,8 +303,9 @@ class Table<T extends Rec> {
       final r = _decode(e as Map<String, dynamic>);
       _items[r.id] = r;
     }
-    (j['tombs'] as Map<String, dynamic>? ?? const {})
-        .forEach((id, at) => _tombs[id] = at as int);
+    (j['tombs'] as Map<String, dynamic>? ?? const {}).forEach(
+      (id, at) => _tombs[id] = at as int,
+    );
   }
 
   Map<String, dynamic> toJson() {
@@ -325,16 +335,16 @@ class VaultData {
   final knownHosts = Table<KnownHost>(KnownHost.fromJson);
 
   Map<String, Table> get _tables => {
-        'hosts': hosts,
-        'keys': keys,
-        'identities': identities,
-        'snippets': snippets,
-        'forwards': forwards,
-        'knownHosts': knownHosts,
-      };
+    'hosts': hosts,
+    'keys': keys,
+    'identities': identities,
+    'snippets': snippets,
+    'forwards': forwards,
+    'knownHosts': knownHosts,
+  };
 
-  void load(Map<String, dynamic> j) => _tables
-      .forEach((name, t) => t.load(j[name] as Map<String, dynamic>?));
+  void load(Map<String, dynamic> j) =>
+      _tables.forEach((name, t) => t.load(j[name] as Map<String, dynamic>?));
 
   Map<String, dynamic> toJson() =>
       _tables.map((name, t) => MapEntry(name, t.toJson()));
@@ -349,7 +359,7 @@ class VaultData {
   }
 
   Credentials credentialsFor(Host h) {
-    final ident = identities[h.identityId];
+    final ident = h.useDeviceKeys ? null : identities[h.identityId];
     if (ident != null) {
       return Credentials(ident.username, ident.password, keys[ident.keyId]);
     }

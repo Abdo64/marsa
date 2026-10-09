@@ -4,6 +4,7 @@ import 'package:dartssh2/dartssh2.dart';
 
 import '../core/models.dart';
 import '../core/vault.dart';
+import 'device_keys.dart';
 
 /// Questions a connection may need answered by the person at the keyboard.
 abstract class Prompter {
@@ -13,12 +14,19 @@ abstract class Prompter {
   /// The server's key differs from the pinned one. Return true only if the
   /// user explicitly chose to replace the pinned key.
   Future<bool> confirmChangedHost(
-      String host, String type, String oldFingerprint, String fingerprint);
+    String host,
+    String type,
+    String oldFingerprint,
+    String fingerprint,
+  );
 
   Future<String?> askSecret(String title, String prompt);
 
   Future<List<String>?> askInteractive(
-      String title, String instruction, List<SSHUserInfoPrompt> prompts);
+    String title,
+    String instruction,
+    List<SSHUserInfoPrompt> prompts,
+  );
 }
 
 class ConnectError implements Exception {
@@ -46,7 +54,11 @@ Future<Connection> connect(VaultSession vault, Host host, Prompter ui) =>
     _connect(vault, host, ui, {});
 
 Future<Connection> _connect(
-    VaultSession vault, Host host, Prompter ui, Set<String> chain) async {
+  VaultSession vault,
+  Host host,
+  Prompter ui,
+  Set<String> chain,
+) async {
   if (!chain.add(host.id)) {
     throw ConnectError('Jump hosts form a loop at ${host.title}');
   }
@@ -55,6 +67,13 @@ Future<Connection> _connect(
     throw ConnectError('${host.title} has no username set');
   }
   final where = '${host.address}:${host.port}';
+
+  // Read (and if needed unlock) the keys before opening the connection, so a
+  // passphrase prompt cannot run into the server's login timeout.
+  final identities = <SSHKeyPair>[
+    if (creds.key != null) ...SSHKeyPair.fromPem(creds.key!.privateKey),
+    if (host.useDeviceKeys) ...await DeviceKeys.load(ui),
+  ];
 
   final parents = <SSHClient>[];
   final SSHSocket socket;
@@ -67,8 +86,11 @@ Future<Connection> _connect(
         ..addAll(via._parents);
       socket = await via.client.forwardLocal(host.address, host.port);
     } else {
-      socket = await SSHSocket.connect(host.address, host.port,
-          timeout: const Duration(seconds: 20));
+      socket = await SSHSocket.connect(
+        host.address,
+        host.port,
+        timeout: const Duration(seconds: 20),
+      );
     }
   } catch (e) {
     for (final p in parents) {
@@ -83,8 +105,7 @@ Future<Connection> _connect(
   final client = SSHClient(
     socket,
     username: creds.username,
-    identities:
-        creds.key == null ? null : SSHKeyPair.fromPem(creds.key!.privateKey),
+    identities: identities.isEmpty ? null : identities,
     onVerifyHostKey: (type, raw) async {
       final seen = utf8.decode(raw);
       final known = vault.data.knownHosts[where];
@@ -96,8 +117,9 @@ Future<Connection> _connect(
         rejected = 'Host key for $where was not accepted';
         return false;
       }
-      vault.data.knownHosts
-          .put(KnownHost(id: where, type: type, fingerprint: seen));
+      vault.data.knownHosts.put(
+        KnownHost(id: where, type: type, fingerprint: seen),
+      );
       await vault.commit();
       return true;
     },
@@ -118,7 +140,10 @@ Future<Connection> _connect(
         return [creds.password];
       }
       return ui.askInteractive(
-          req.name.isEmpty ? host.title : req.name, req.instruction, req.prompts);
+        req.name.isEmpty ? host.title : req.name,
+        req.instruction,
+        req.prompts,
+      );
     },
   );
 

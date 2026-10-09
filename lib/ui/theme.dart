@@ -20,8 +20,10 @@ class AppSettings extends ChangeNotifier {
     if (!await _file.exists()) return;
     try {
       final j = jsonDecode(await _file.readAsString()) as Map<String, dynamic>;
-      themeMode = ThemeMode.values.firstWhere((m) => m.name == j['themeMode'],
-          orElse: () => ThemeMode.system);
+      themeMode = ThemeMode.values.firstWhere(
+        (m) => m.name == j['themeMode'],
+        orElse: () => ThemeMode.system,
+      );
       terminalTheme = j['terminalTheme'] as String? ?? 'auto';
       fontSize = (j['fontSize'] as num?)?.toDouble() ?? 13;
     } on FormatException {
@@ -32,30 +34,39 @@ class AppSettings extends ChangeNotifier {
   void update(void Function() change) {
     change();
     notifyListeners();
-    _file.writeAsString(jsonEncode({
-      'themeMode': themeMode.name,
-      'terminalTheme': terminalTheme,
-      'fontSize': fontSize,
-    }));
+    _file.writeAsString(
+      jsonEncode({
+        'themeMode': themeMode.name,
+        'terminalTheme': terminalTheme,
+        'fontSize': fontSize,
+      }),
+    );
   }
 }
 
 ThemeData buildTheme(Brightness brightness) {
   final dark = brightness == Brightness.dark;
-  final scheme = ColorScheme.fromSeed(
-    seedColor: const Color(0xFF14B8A6),
-    brightness: brightness,
-  ).copyWith(
-    surface: dark ? const Color(0xFF12161C) : const Color(0xFFF7F8FA),
-    surfaceContainerLowest: dark ? const Color(0xFF0C0F14) : Colors.white,
-    surfaceContainerLow: dark ? const Color(0xFF171C23) : Colors.white,
-    surfaceContainer: dark ? const Color(0xFF1B2129) : const Color(0xFFF0F2F5),
-    surfaceContainerHigh:
-        dark ? const Color(0xFF222932) : const Color(0xFFE8EBEF),
-    surfaceContainerHighest:
-        dark ? const Color(0xFF2A323D) : const Color(0xFFDFE3E8),
-    outlineVariant: dark ? const Color(0xFF2A323D) : const Color(0xFFDDE1E6),
-  );
+  final scheme =
+      ColorScheme.fromSeed(
+        seedColor: const Color(0xFF14B8A6),
+        brightness: brightness,
+      ).copyWith(
+        surface: dark ? const Color(0xFF12161C) : const Color(0xFFF7F8FA),
+        surfaceContainerLowest: dark ? const Color(0xFF0C0F14) : Colors.white,
+        surfaceContainerLow: dark ? const Color(0xFF171C23) : Colors.white,
+        surfaceContainer: dark
+            ? const Color(0xFF1B2129)
+            : const Color(0xFFF0F2F5),
+        surfaceContainerHigh: dark
+            ? const Color(0xFF222932)
+            : const Color(0xFFE8EBEF),
+        surfaceContainerHighest: dark
+            ? const Color(0xFF2A323D)
+            : const Color(0xFFDFE3E8),
+        outlineVariant: dark
+            ? const Color(0xFF2A323D)
+            : const Color(0xFFDDE1E6),
+      );
   final radius = BorderRadius.circular(10);
   return ThemeData(
     colorScheme: scheme,
@@ -77,10 +88,13 @@ ThemeData buildTheme(Brightness brightness) {
       filled: true,
       fillColor: scheme.surfaceContainer,
       border: OutlineInputBorder(
-          borderRadius: radius, borderSide: BorderSide.none),
+        borderRadius: radius,
+        borderSide: BorderSide.none,
+      ),
       focusedBorder: OutlineInputBorder(
-          borderRadius: radius,
-          borderSide: BorderSide(color: scheme.primary, width: 1.5)),
+        borderRadius: radius,
+        borderSide: BorderSide(color: scheme.primary, width: 1.5),
+      ),
     ),
     dialogTheme: DialogThemeData(
       backgroundColor: scheme.surfaceContainerLow,
@@ -88,24 +102,22 @@ ThemeData buildTheme(Brightness brightness) {
     ),
     filledButtonTheme: FilledButtonThemeData(
       style: FilledButton.styleFrom(
-          shape: RoundedRectangleBorder(borderRadius: radius)),
+        shape: RoundedRectangleBorder(borderRadius: radius),
+      ),
     ),
     outlinedButtonTheme: OutlinedButtonThemeData(
       style: OutlinedButton.styleFrom(
-          shape: RoundedRectangleBorder(borderRadius: radius)),
+        shape: RoundedRectangleBorder(borderRadius: radius),
+      ),
     ),
     snackBarTheme: const SnackBarThemeData(
-        behavior: SnackBarBehavior.floating, width: 420),
+      behavior: SnackBarBehavior.floating,
+      width: 420,
+    ),
   );
 }
 
-TerminalTheme _t(
-  int bg,
-  int fg,
-  int cursor,
-  int selection,
-  List<int> c,
-) =>
+TerminalTheme _t(int bg, int fg, int cursor, int selection, List<int> c) =>
     TerminalTheme(
       cursor: Color(cursor),
       selection: Color(selection),
@@ -161,5 +173,6 @@ final Map<String, TerminalTheme> terminalThemes = {
 
 TerminalTheme resolveTerminalTheme(String name, Brightness brightness) =>
     terminalThemes[name] ??
-    terminalThemes[
-        brightness == Brightness.dark ? 'Marsa Dark' : 'Marsa Light']!;
+    terminalThemes[brightness == Brightness.dark
+        ? 'Marsa Dark'
+        : 'Marsa Light']!;

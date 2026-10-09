@@ -6,9 +6,16 @@ import 'common.dart';
 import 'sync_dialog.dart';
 
 class UnlockPage extends StatefulWidget {
-  const UnlockPage(
-      {super.key, required this.registry, required this.onUnlocked});
+  const UnlockPage({
+    super.key,
+    required this.registry,
+    required this.onUnlocked,
+    this.autoUnlock = false,
+  });
   final VaultRegistry registry;
+
+  /// Open the last used vault straight away if this device remembers it.
+  final bool autoUnlock;
   final ValueChanged<VaultSession> onUnlocked;
 
   @override
@@ -20,6 +27,7 @@ class _UnlockPageState extends State<UnlockPage> {
   final _focus = FocusNode();
   VaultInfo? _selected;
   bool _working = false;
+  bool _remember = false;
   String? _error;
 
   VaultRegistry get _reg => widget.registry;
@@ -27,7 +35,21 @@ class _UnlockPageState extends State<UnlockPage> {
   @override
   void initState() {
     super.initState();
-    if (_reg.vaults.isNotEmpty) _selected = _reg.vaults.first;
+    if (_reg.vaults.isEmpty) return;
+    _select(
+      _reg.vaults.firstWhere(
+        (v) => v.id == _reg.lastId,
+        orElse: () => _reg.vaults.first,
+      ),
+    );
+    if (widget.autoUnlock && _selected!.remembered) {
+      WidgetsBinding.instance.addPostFrameCallback((_) => _unlock());
+    }
+  }
+
+  void _select(VaultInfo v) {
+    _selected = v;
+    _remember = v.remembered;
   }
 
   Future<void> _run(Future<VaultSession?> Function() work) async {
@@ -48,15 +70,44 @@ class _UnlockPageState extends State<UnlockPage> {
 
   void _unlock() {
     final v = _selected;
-    if (v == null || _password.text.isEmpty) return;
-    _run(() => _reg.unlock(v, _password.text));
+    if (v == null) return;
+    final password = _password.text;
+    if (password.isEmpty) {
+      if (!v.remembered) return;
+      _run(() async {
+        final s = await _reg.unlockRemembered(v);
+        if (s == null) {
+          _error =
+              'This device could not open the vault by itself. Enter '
+              'the master password.';
+          _remember = true;
+        }
+        return s;
+      });
+      return;
+    }
+    final remember = _remember;
+    _run(() async {
+      final s = await _reg.unlock(v, password);
+      if (remember) {
+        try {
+          await _reg.remember(s);
+        } catch (e) {
+          if (mounted) toast(context, 'Could not remember this vault: $e');
+        }
+      } else if (v.remembered) {
+        await _reg.forget(v);
+      }
+      return s;
+    });
   }
 
   Future<List<String>?> _askNewVault(String title) async {
     final r = await promptFields(
       context,
       title,
-      message: 'The master password encrypts everything in the vault. It is '
+      message:
+          'The master password encrypts everything in the vault. It is '
           'never stored and cannot be recovered if you forget it.',
       labels: ['Vault name', 'Master password', 'Repeat master password'],
       obscure: [false, true, true],
@@ -84,7 +135,8 @@ class _UnlockPageState extends State<UnlockPage> {
     final r = await promptFields(
       context,
       'Join a synced vault',
-      message: 'Use this on a new device, or to add a vault a teammate '
+      message:
+          'Use this on a new device, or to add a vault a teammate '
           'shared with you. You need the vault\'s master password and '
           'access to where it is synced.',
       labels: ['Name for this vault', 'Master password'],
@@ -92,8 +144,11 @@ class _UnlockPageState extends State<UnlockPage> {
       action: 'Next',
     );
     if (r == null || !mounted || r[0].trim().isEmpty) return;
-    final cfg =
-        await showSyncDialog(context, vaultName: r[0].trim(), joining: true);
+    final cfg = await showSyncDialog(
+      context,
+      vaultName: r[0].trim(),
+      joining: true,
+    );
     if (cfg != null) _run(() => _reg.join(r[0].trim(), r[1], cfg));
   }
 
@@ -109,7 +164,10 @@ class _UnlockPageState extends State<UnlockPage> {
     );
     if (!ok) return;
     await _reg.remove(v);
-    setState(() => _selected = _reg.vaults.isEmpty ? null : _reg.vaults.first);
+    setState(() {
+      _selected = null;
+      if (_reg.vaults.isNotEmpty) _select(_reg.vaults.first);
+    });
   }
 
   @override
@@ -127,41 +185,52 @@ class _UnlockPageState extends State<UnlockPage> {
               children: [
                 Icon(Icons.anchor, size: 40, color: scheme.primary),
                 const SizedBox(height: 8),
-                Text('Marsa',
-                    textAlign: TextAlign.center,
-                    style: t.textTheme.headlineSmall),
+                Text(
+                  'Marsa',
+                  textAlign: TextAlign.center,
+                  style: t.textTheme.headlineSmall,
+                ),
                 const SizedBox(height: 4),
                 Text(
-                    _reg.vaults.isEmpty
-                        ? 'Create a vault to keep your servers and keys in.'
-                        : 'Unlock a vault to continue.',
-                    textAlign: TextAlign.center,
-                    style: t.textTheme.bodyMedium
-                        ?.copyWith(color: scheme.onSurfaceVariant)),
+                  _reg.vaults.isEmpty
+                      ? 'Create a vault to keep your servers and keys in.'
+                      : 'Unlock a vault to continue.',
+                  textAlign: TextAlign.center,
+                  style: t.textTheme.bodyMedium?.copyWith(
+                    color: scheme.onSurfaceVariant,
+                  ),
+                ),
                 const SizedBox(height: 24),
                 if (_reg.vaults.isNotEmpty) ...[
                   Card(
                     clipBehavior: Clip.antiAlias,
-                    child: Column(children: [
-                      for (final v in _reg.vaults)
-                        ListTile(
-                          selected: v == _selected,
-                          selectedTileColor: scheme.primaryContainer,
-                          leading: Icon(v == _selected
-                              ? Icons.lock_open_outlined
-                              : Icons.lock_outline),
-                          title: Text(v.name),
-                          trailing: IconButton(
-                            tooltip: 'Remove from this device',
-                            icon: const Icon(Icons.close, size: 18),
-                            onPressed: _working ? null : () => _remove(v),
+                    child: Column(
+                      children: [
+                        for (final v in _reg.vaults)
+                          ListTile(
+                            selected: v == _selected,
+                            selectedTileColor: scheme.primaryContainer,
+                            leading: Icon(
+                              v == _selected
+                                  ? Icons.lock_open_outlined
+                                  : Icons.lock_outline,
+                            ),
+                            title: Text(v.name),
+                            subtitle: v.remembered
+                                ? const Text('Remembered on this device')
+                                : null,
+                            trailing: IconButton(
+                              tooltip: 'Remove from this device',
+                              icon: const Icon(Icons.close, size: 18),
+                              onPressed: _working ? null : () => _remove(v),
+                            ),
+                            onTap: () {
+                              setState(() => _select(v));
+                              _focus.requestFocus();
+                            },
                           ),
-                          onTap: () {
-                            setState(() => _selected = v);
-                            _focus.requestFocus();
-                          },
-                        ),
-                    ]),
+                      ],
+                    ),
                   ),
                   const SizedBox(height: 12),
                   TextField(
@@ -170,11 +239,28 @@ class _UnlockPageState extends State<UnlockPage> {
                     autofocus: true,
                     obscureText: true,
                     enabled: !_working,
-                    decoration:
-                        const InputDecoration(labelText: 'Master password'),
+                    decoration: InputDecoration(
+                      labelText: _selected?.remembered ?? false
+                          ? 'Master password (not needed)'
+                          : 'Master password',
+                    ),
                     onSubmitted: (_) => _unlock(),
                   ),
-                  const SizedBox(height: 12),
+                  CheckboxListTile(
+                    value: _remember,
+                    onChanged: _working
+                        ? null
+                        : (v) => setState(() => _remember = v ?? false),
+                    dense: true,
+                    contentPadding: EdgeInsets.zero,
+                    controlAffinity: ListTileControlAffinity.leading,
+                    title: const Text('Remember on this device'),
+                    subtitle: const Text(
+                      'Opens without the password for anyone signed in to '
+                      'this computer as you.',
+                    ),
+                  ),
+                  const SizedBox(height: 4),
                   FilledButton(
                     onPressed: _working ? null : _unlock,
                     child: Padding(
@@ -186,9 +272,11 @@ class _UnlockPageState extends State<UnlockPage> {
                   const Center(child: CircularProgressIndicator()),
                 if (_error != null) ...[
                   const SizedBox(height: 12),
-                  Text(_error!,
-                      textAlign: TextAlign.center,
-                      style: TextStyle(color: scheme.error)),
+                  Text(
+                    _error!,
+                    textAlign: TextAlign.center,
+                    style: TextStyle(color: scheme.error),
+                  ),
                 ],
                 const SizedBox(height: 16),
                 Wrap(

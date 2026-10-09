@@ -37,13 +37,15 @@ class ForwardManager extends ChangeNotifier {
       await _open(rule, conn.client, run);
       // Stopped while we were still connecting.
       if (_running[rule.id] != run) return _close(run);
-      unawaited(conn.client.done.catchError((_) {}).whenComplete(() {
-        if (_running[rule.id] == run && run.error == null) {
-          run.error = 'Connection closed';
-          _close(run);
-          notifyListeners();
-        }
-      }));
+      unawaited(
+        conn.client.done.catchError((_) {}).whenComplete(() {
+          if (_running[rule.id] == run && run.error == null) {
+            run.error = 'Connection closed';
+            _close(run);
+            notifyListeners();
+          }
+        }),
+      );
     } catch (e) {
       run.error = e.toString();
       await _close(run);
@@ -52,7 +54,11 @@ class ForwardManager extends ChangeNotifier {
     notifyListeners();
   }
 
-  Future<void> _open(PortForward r, SSHClient client, RunningForward run) async {
+  Future<void> _open(
+    PortForward r,
+    SSHClient client,
+    RunningForward run,
+  ) async {
     switch (r.kind) {
       case ForwardKind.local:
         final server = await ServerSocket.bind(r.bindHost, r.bindPort);
@@ -66,11 +72,14 @@ class ForwardManager extends ChangeNotifier {
           }
         });
       case ForwardKind.remote:
-        final fwd =
-            await client.forwardRemote(host: r.bindHost, port: r.bindPort);
+        final fwd = await client.forwardRemote(
+          host: r.bindHost,
+          port: r.bindPort,
+        );
         if (fwd == null) {
           throw ConnectError(
-              'The server refused to listen on ${r.bindHost}:${r.bindPort}');
+            'The server refused to listen on ${r.bindHost}:${r.bindPort}',
+          );
         }
         run._closers.add(() async => fwd.close());
         fwd.connections.listen((ch) async {
@@ -82,18 +91,25 @@ class ForwardManager extends ChangeNotifier {
         });
       case ForwardKind.dynamic:
         final socks = await client.forwardDynamic(
-            bindHost: r.bindHost, bindPort: r.bindPort);
+          bindHost: r.bindHost,
+          bindPort: r.bindPort,
+        );
         run._closers.add(socks.close);
     }
   }
 
   void _pipe(Socket socket, SSHForwardChannel ch) {
-    ch.stream.listen(socket.add,
-        onDone: socket.destroy, onError: (_) => socket.destroy());
-    socket.listen(ch.sink.add,
-        onDone: ch.close,
-        onError: (_) => ch.destroy(),
-        cancelOnError: true);
+    ch.stream.listen(
+      socket.add,
+      onDone: socket.destroy,
+      onError: (_) => socket.destroy(),
+    );
+    socket.listen(
+      ch.sink.add,
+      onDone: ch.close,
+      onError: (_) => ch.destroy(),
+      cancelOnError: true,
+    );
   }
 
   Future<void> _close(RunningForward run) async {

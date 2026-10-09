@@ -1,6 +1,5 @@
 import 'dart:async';
 import 'dart:io';
-import 'dart:typed_data';
 
 import 'package:dartssh2/dartssh2.dart';
 import 'package:flutter/foundation.dart';
@@ -42,10 +41,9 @@ class LocalFiles implements FileBackend {
       Directory.current.path;
 
   @override
-  String join(String dir, String name) =>
-      dir.endsWith(Platform.pathSeparator)
-          ? '$dir$name'
-          : '$dir${Platform.pathSeparator}$name';
+  String join(String dir, String name) => dir.endsWith(Platform.pathSeparator)
+      ? '$dir$name'
+      : '$dir${Platform.pathSeparator}$name';
 
   @override
   String parent(String path) => Directory(path).parent.path;
@@ -57,13 +55,15 @@ class LocalFiles implements FileBackend {
       try {
         final st = await e.stat();
         final name = e.uri.pathSegments.lastWhere((s) => s.isNotEmpty);
-        out.add(FileEntry(
-          Uri.decodeComponent(name),
-          st.type == FileSystemEntityType.directory,
-          st.size,
-          st.modified,
-          Platform.isWindows ? null : st.mode & 0xFFF,
-        ));
+        out.add(
+          FileEntry(
+            Uri.decodeComponent(name),
+            st.type == FileSystemEntityType.directory,
+            st.size,
+            st.modified,
+            Platform.isWindows ? null : st.mode & 0xFFF,
+          ),
+        );
       } on FileSystemException {
         // Unreadable entry (permissions, broken link): leave it out.
       }
@@ -84,9 +84,8 @@ class LocalFiles implements FileBackend {
   }
 
   @override
-  Future<void> delete(String path, {required bool isDir}) => isDir
-      ? Directory(path).delete(recursive: true)
-      : File(path).delete();
+  Future<void> delete(String path, {required bool isDir}) =>
+      isDir ? Directory(path).delete(recursive: true) : File(path).delete();
 
   @override
   Stream<Uint8List> read(String path) =>
@@ -142,15 +141,17 @@ class RemoteFiles implements FileBackend {
           // Dangling link: show it as a plain file.
         }
       }
-      out.add(FileEntry(
-        n.filename,
-        attr.isDirectory,
-        attr.size ?? 0,
-        attr.modifyTime == null
-            ? null
-            : DateTime.fromMillisecondsSinceEpoch(attr.modifyTime! * 1000),
-        attr.mode == null ? null : attr.mode!.value & 0xFFF,
-      ));
+      out.add(
+        FileEntry(
+          n.filename,
+          attr.isDirectory,
+          attr.size ?? 0,
+          attr.modifyTime == null
+              ? null
+              : DateTime.fromMillisecondsSinceEpoch(attr.modifyTime! * 1000),
+          attr.mode == null ? null : attr.mode!.value & 0xFFF,
+        ),
+      );
     }
     return out;
   }
@@ -185,10 +186,13 @@ class RemoteFiles implements FileBackend {
 
   @override
   Future<void> write(String path, Stream<Uint8List> data) async {
-    final f = await sftp.open(path,
-        mode: SftpFileOpenMode.create |
-            SftpFileOpenMode.write |
-            SftpFileOpenMode.truncate);
+    final f = await sftp.open(
+      path,
+      mode:
+          SftpFileOpenMode.create |
+          SftpFileOpenMode.write |
+          SftpFileOpenMode.truncate,
+    );
     try {
       await f.write(data);
     } finally {
@@ -221,16 +225,27 @@ class TransferManager extends ChangeNotifier {
 
   bool get busy => transfers.any((t) => !t.done);
 
-  Future<void> copy(FileBackend from, String fromDir, FileEntry entry,
-      FileBackend to, String toDir) {
+  Future<void> copy(
+    FileBackend from,
+    String fromDir,
+    FileEntry entry,
+    FileBackend to,
+    String toDir,
+  ) {
     final t = Transfer(entry.name, '${from.label} → ${to.label}')
       ..total = entry.isDir ? null : entry.size;
     transfers.insert(0, t);
     notifyListeners();
     return _queue = _queue.then((_) async {
       try {
-        await _copy(t, from, from.join(fromDir, entry.name), entry.isDir, to,
-            to.join(toDir, entry.name));
+        await _copy(
+          t,
+          from,
+          from.join(fromDir, entry.name),
+          entry.isDir,
+          to,
+          to.join(toDir, entry.name),
+        );
       } catch (e) {
         if (!t.cancelled) t.error = e.toString();
       }
@@ -239,17 +254,26 @@ class TransferManager extends ChangeNotifier {
     });
   }
 
-  Future<void> _copy(Transfer t, FileBackend from, String src, bool isDir,
-      FileBackend to, String dst) async {
+  Future<void> _copy(
+    Transfer t,
+    FileBackend from,
+    String src,
+    bool isDir,
+    FileBackend to,
+    String dst,
+  ) async {
     if (t.cancelled) throw StateError('cancelled');
     if (!isDir) {
       t.current = src;
-      await to.write(dst, from.read(src).map((chunk) {
-        if (t.cancelled) throw StateError('cancelled');
-        t.bytes += chunk.length;
-        _tick();
-        return chunk;
-      }));
+      await to.write(
+        dst,
+        from.read(src).map((chunk) {
+          if (t.cancelled) throw StateError('cancelled');
+          t.bytes += chunk.length;
+          _tick();
+          return chunk;
+        }),
+      );
       return;
     }
     try {
@@ -260,7 +284,13 @@ class TransferManager extends ChangeNotifier {
     }
     for (final e in await from.list(src)) {
       await _copy(
-          t, from, from.join(src, e.name), e.isDir, to, to.join(dst, e.name));
+        t,
+        from,
+        from.join(src, e.name),
+        e.isDir,
+        to,
+        to.join(dst, e.name),
+      );
     }
   }
 

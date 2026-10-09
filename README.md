@@ -1,17 +1,151 @@
-# marsa
+# Marsa
 
-Open-source SSH and SFTP client with encrypted, self-synced vaults.
+Marsa (مرسى, "harbour") is an open-source SSH and SFTP client for Windows and
+macOS. Your hosts, keys and snippets live in encrypted vaults that sync across
+your devices and your team through storage **you** control: one of your own
+servers, or any shared folder. There is no account, no subscription and no
+Marsa server.
 
-## Getting Started
+Android and iOS are planned on the same codebase.
 
-This project is a starting point for a Flutter application.
+## Features
 
-A few resources to get you started if this is your first Flutter project:
+- **Hosts** with groups, tags, search, jump hosts (ProxyJump) and import from
+  `~/.ssh/config`. A host can sign in with **this device's SSH keys**
+  (`~/.ssh/id_*`), used in place and never copied into the vault, so each
+  device connects with its own key.
+- **Terminal**: xterm-compatible, 256/true colour, several sessions side by
+  side, copy/paste, reconnect, four colour schemes.
+- **SFTP**: two panes (this computer and the server), upload and download of
+  files and whole folders with progress, rename, delete, new folder,
+  permissions.
+- **Keychain**: generate Ed25519 or RSA keys, import existing ones (including
+  passphrase-protected), copy the public key, install it on a host in one
+  click. **Identities** let many hosts share one username/password/key.
+- **Vaults**: several per device (for example *Personal* and *Team*), each
+  with its own master password and its own sync location.
+- **Sync** over SFTP to a server you own, or through a folder (iCloud Drive,
+  OneDrive, Dropbox, Syncthing, a network share).
+- **Port forwarding**: local, remote and dynamic (SOCKS5).
+- **Snippets**: saved commands you can send to any open terminal.
+- **Known hosts**: server keys are pinned on first use and synced, so a
+  changed key is caught on every device.
+- **Remember on this device**: optionally keep a vault's key in the macOS
+  Keychain or Windows Credential Manager, so the app opens without typing the
+  master password.
+- **Light and dark themes**, or follow the system.
+- Small: the macOS app is about 19 MB zipped (universal), with no bundled
+  browser engine.
 
-- [Learn Flutter](https://docs.flutter.dev/get-started/learn-flutter)
-- [Write your first Flutter app](https://docs.flutter.dev/get-started/codelab)
-- [Flutter learning resources](https://docs.flutter.dev/reference/learning-resources)
+## How vaults and sync work
 
-For help getting started with Flutter development, view the
-[online documentation](https://docs.flutter.dev/), which offers tutorials,
-samples, guidance on mobile development, and a full API reference.
+A vault is one file. Its contents are compressed and encrypted with
+AES-256-GCM; the key is derived from your master password with Argon2id. The
+master password is never stored, so a forgotten password cannot be recovered.
+
+Sync mirrors that same encrypted file to a location you pick. The sync target
+only ever sees ciphertext, and the sync settings themselves (server address,
+credentials) stay in the local copy and are never uploaded.
+
+**First device:** Settings → *Set up sync*. Choose *Your server (SFTP)* and
+fill it in from any saved host, or choose a folder.
+
+**Every other device:** on the unlock screen choose *Join a synced vault*,
+enter the master password and point it at the same location.
+
+**Sharing with a team:** create a separate vault for shared servers, sync it
+somewhere the team can reach, and give teammates the location and the master
+password. To revoke someone, change the master password and whatever access
+they had to the sync location.
+
+Changes are merged record by record (last edit wins, deletions are
+remembered), so two people editing different hosts never overwrite each other.
+Sync runs when you unlock, shortly after every change, and every few minutes.
+
+## Install
+
+Download the latest build from the Releases page, or build it yourself.
+
+- **Windows:** unzip and run `marsa.exe`. Keep the files in the zip together.
+- **macOS:** unzip and move `Marsa.app` to Applications. Builds are not
+  notarised, so the first time right-click the app and choose *Open*.
+
+## Build from source
+
+You need the [Flutter SDK](https://docs.flutter.dev/get-started/install)
+(stable channel) and the platform toolchain: Xcode on macOS, Visual Studio
+with the "Desktop development with C++" workload on Windows.
+
+```sh
+flutter pub get
+flutter run -d macos          # or: -d windows
+flutter build macos --release # build/macos/Build/Products/Release/Marsa.app
+flutter build windows --release # build\windows\x64\runner\Release\
+```
+
+Flutter cannot cross-compile desktop apps: the Windows build must run on
+Windows. The included GitHub Actions workflow builds both platforms and
+attaches the zips to a release when you push a `v*` tag.
+
+### Tests
+
+```sh
+flutter analyze
+flutter test
+```
+
+`flutter test integration_test -d macos` (or `-d windows`) additionally checks
+the real OS credential store.
+
+`test/ssh_integration_test.dart` starts a throwaway, unprivileged `sshd` on a
+loopback port inside a temp directory and exercises real connections: key
+authentication, host-key pinning, jump hosts, an interactive shell, SFTP
+transfers, port forwards and vault sync over SFTP. It needs `/usr/sbin/sshd`
+(present on macOS and most Linux systems) and is skipped elsewhere. It does not
+touch `~/.ssh`.
+
+## Project layout
+
+```
+lib/core/   vault encryption, data model, merge and sync (no UI)
+lib/ssh/    connections, keys, port forwarding, SFTP backends, sessions
+lib/ui/     screens and themes
+test/       unit, UI layout and end-to-end SSH tests
+```
+
+Per-device data is in the user's application-support directory
+(`~/Library/Application Support/dev.marsa.marsa` on macOS,
+`%APPDATA%\dev.marsa\Marsa` on Windows).
+
+## Security notes and current limits
+
+- This project has not had an independent security audit.
+- Private keys are stored unencrypted *inside* the encrypted vault. A
+  passphrase-protected key is unlocked once at import; from then on the vault's
+  master password is what protects it.
+- "Remember on this device" stores the vault key (not the password) in the
+  OS credential store. Anyone who can use your signed-in OS account can then
+  open the vault; leave it off on shared computers.
+- Device SSH keys are read from `~/.ssh` at connect time. A
+  passphrase-protected key asks for its passphrase once per app run. Keys
+  that live only in an agent or on a hardware token are not supported.
+- Anyone with the master password and access to the sync location can read the
+  vault. Vault sharing has no per-user permissions.
+- The macOS build runs without the App Sandbox, because an SFTP client needs
+  to read and write files anywhere you choose.
+- Not implemented yet: local terminal, SSH agent forwarding, Mosh/Telnet/serial,
+  auto-lock and biometric unlock, drag and drop into the SFTP panes, resuming
+  interrupted transfers.
+
+## Roadmap
+
+- Android and iOS apps (the core and SSH layers are already platform-neutral).
+- Installers: MSIX/Inno Setup for Windows, notarised DMG for macOS.
+- Auto-lock and OS keychain/biometric unlock.
+- WebDAV and S3 sync targets.
+
+## License
+
+[MIT](LICENSE). Third-party components are listed in
+[THIRD_PARTY_LICENSES.md](THIRD_PARTY_LICENSES.md) and in the app under
+Settings → About.

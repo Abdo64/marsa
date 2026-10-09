@@ -24,13 +24,18 @@ class KeychainPage extends StatelessWidget {
   }
 
   Future<void> _generate(BuildContext context, bool rsa) async {
-    final r = await promptFields(context,
-        rsa ? 'Generate RSA 3072 key' : 'Generate Ed25519 key',
-        labels: ['Label'], action: 'Generate');
+    final r = await promptFields(
+      context,
+      rsa ? 'Generate RSA 3072 key' : 'Generate Ed25519 key',
+      labels: ['Label'],
+      action: 'Generate',
+    );
     if (r == null || r.first.trim().isEmpty || !context.mounted) return;
     final label = r.first.trim();
-    final key = await busy(context,
-        () async => rsa ? await generateRsa(label) : generateEd25519(label));
+    final key = await busy(
+      context,
+      () async => rsa ? await generateRsa(label) : generateEd25519(label),
+    );
     if (context.mounted) await _add(context, key);
   }
 
@@ -45,7 +50,9 @@ class KeychainPage extends StatelessWidget {
     } else {
       if (!context.mounted) return;
       final r = await showDialog<String>(
-          context: context, builder: (_) => const _PasteKeyDialog());
+        context: context,
+        builder: (_) => const _PasteKeyDialog(),
+      );
       if (r == null) return;
       pem = r;
     }
@@ -56,7 +63,7 @@ class KeychainPage extends StatelessWidget {
       'Import key',
       message: encrypted
           ? 'This key is passphrase-protected. It is unlocked once and then '
-              'protected by the vault instead.'
+                'protected by the vault instead.'
           : null,
       labels: ['Label', if (encrypted) 'Key passphrase'],
       obscure: [false, if (encrypted) true],
@@ -68,9 +75,11 @@ class KeychainPage extends StatelessWidget {
       try {
         return await importKey(r.first.trim(), pem, encrypted ? r[1] : null);
       } catch (_) {
-        throw ConnectError(encrypted
-            ? 'Could not unlock the key. Check the passphrase.'
-            : 'That is not a private key this app can read.');
+        throw ConnectError(
+          encrypted
+              ? 'Could not unlock the key. Check the passphrase.'
+              : 'That is not a private key this app can read.',
+        );
       }
     });
     if (context.mounted) await _add(context, key);
@@ -86,7 +95,9 @@ class KeychainPage extends StatelessWidget {
         children: [
           for (final h in hosts)
             SimpleDialogOption(
-                onPressed: () => Navigator.pop(c, h), child: Text(h.title)),
+              onPressed: () => Navigator.pop(c, h),
+              child: Text(h.title),
+            ),
         ],
       ),
     );
@@ -96,13 +107,15 @@ class KeychainPage extends StatelessWidget {
       try {
         final line = key.publicKey;
         final r = await conn.client.runWithResult(
-            "mkdir -p ~/.ssh && chmod 700 ~/.ssh && "
-            "touch ~/.ssh/authorized_keys && chmod 600 ~/.ssh/authorized_keys "
-            "&& { grep -qxF '$line' ~/.ssh/authorized_keys || "
-            "echo '$line' >> ~/.ssh/authorized_keys; }");
+          "mkdir -p ~/.ssh && chmod 700 ~/.ssh && "
+          "touch ~/.ssh/authorized_keys && chmod 600 ~/.ssh/authorized_keys "
+          "&& { grep -qxF '$line' ~/.ssh/authorized_keys || "
+          "echo '$line' >> ~/.ssh/authorized_keys; }",
+        );
         if (r.exitCode != 0) {
           throw ConnectError(
-              'The server could not save the key: ${utf8.decode(r.stderr, allowMalformed: true).trim()}');
+            'The server could not save the key: ${utf8.decode(r.stderr, allowMalformed: true).trim()}',
+          );
         }
         return true;
       } finally {
@@ -120,15 +133,16 @@ class KeychainPage extends StatelessWidget {
       ..._data.identities.all.where((i) => i.keyId == k.id).map((i) => i.title),
     ];
     if (!await confirm(
-        context,
-        'Delete key "${k.label}"?',
-        users.isEmpty
-            ? 'The private key is erased from this vault on every synced '
+      context,
+      'Delete key "${k.label}"?',
+      users.isEmpty
+          ? 'The private key is erased from this vault on every synced '
                 'device.'
-            : 'It is still used by: ${users.join(', ')}. They will fall back '
+          : 'It is still used by: ${users.join(', ')}. They will fall back '
                 'to password sign-in.',
-        action: 'Delete',
-        danger: true)) {
+      action: 'Delete',
+      danger: true,
+    )) {
       return;
     }
     _data.keys.remove(k.id);
@@ -137,7 +151,9 @@ class KeychainPage extends StatelessWidget {
 
   Future<void> _editIdentity(BuildContext context, [Identity? i]) async {
     final saved = await showDialog<Identity>(
-        context: context, builder: (_) => _IdentityDialog(_data, i));
+      context: context,
+      builder: (_) => _IdentityDialog(_data, i),
+    );
     if (saved == null) return;
     _data.identities.put(saved);
     await ws.vault.commit();
@@ -145,9 +161,15 @@ class KeychainPage extends StatelessWidget {
 
   Future<void> _deleteIdentity(BuildContext context, Identity i) async {
     final n = _data.hosts.all.where((h) => h.identityId == i.id).length;
-    if (!await confirm(context, 'Delete identity "${i.title}"?',
-        n == 0 ? 'No host uses it.' : '$n host(s) use it and will need new credentials.',
-        action: 'Delete', danger: true)) {
+    if (!await confirm(
+      context,
+      'Delete identity "${i.title}"?',
+      n == 0
+          ? 'No host uses it.'
+          : '$n host(s) use it and will need new credentials.',
+      action: 'Delete',
+      danger: true,
+    )) {
       return;
     }
     _data.identities.remove(i.id);
@@ -157,43 +179,53 @@ class KeychainPage extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final t = Theme.of(context);
-    final muted =
-        t.textTheme.bodySmall?.copyWith(color: t.colorScheme.onSurfaceVariant);
+    final muted = t.textTheme.bodySmall?.copyWith(
+      color: t.colorScheme.onSurfaceVariant,
+    );
     final keys = _data.keys.all.toList()
       ..sort((a, b) => a.label.compareTo(b.label));
     final identities = _data.identities.all.toList()
       ..sort((a, b) => a.title.compareTo(b.title));
     return ListView(
       children: [
-        PageHeader('Keys', actions: [
-          PopupMenuButton<VoidCallback>(
-            onSelected: (f) => f(),
-            itemBuilder: (_) => [
-              PopupMenuItem(
+        PageHeader(
+          'Keys',
+          actions: [
+            PopupMenuButton<VoidCallback>(
+              onSelected: (f) => f(),
+              itemBuilder: (_) => [
+                PopupMenuItem(
                   value: () => _import(context, fromFile: true),
-                  child: const Text('Import from file')),
-              PopupMenuItem(
+                  child: const Text('Import from file'),
+                ),
+                PopupMenuItem(
                   value: () => _import(context, fromFile: false),
-                  child: const Text('Paste a key')),
-              PopupMenuItem(
+                  child: const Text('Paste a key'),
+                ),
+                PopupMenuItem(
                   value: () => _generate(context, true),
-                  child: const Text('Generate RSA 3072')),
-            ],
-            child: const IgnorePointer(
-              child: OutlinedButton(onPressed: _noop, child: Text('More…')),
+                  child: const Text('Generate RSA 3072'),
+                ),
+              ],
+              child: const IgnorePointer(
+                child: OutlinedButton(onPressed: _noop, child: Text('More…')),
+              ),
             ),
-          ),
-          FilledButton.icon(
-            onPressed: () => _generate(context, false),
-            icon: const Icon(Icons.add, size: 18),
-            label: const Text('Generate key'),
-          ),
-        ]),
+            FilledButton.icon(
+              onPressed: () => _generate(context, false),
+              icon: const Icon(Icons.add, size: 18),
+              label: const Text('Generate key'),
+            ),
+          ],
+        ),
         if (keys.isEmpty)
           const Padding(
             padding: EdgeInsets.symmetric(vertical: 24),
-            child: EmptyState(Icons.key_outlined, 'No keys yet',
-                'Generate an Ed25519 key or import one you already use.'),
+            child: EmptyState(
+              Icons.key_outlined,
+              'No keys yet',
+              'Generate an Ed25519 key or import one you already use.',
+            ),
           ),
         for (final k in keys)
           Padding(
@@ -202,49 +234,61 @@ class KeychainPage extends StatelessWidget {
               child: ListTile(
                 leading: const Icon(Icons.key_outlined),
                 title: Text(k.label),
-                subtitle: Text('${k.type}  ${fingerprintOf(k.publicKey)}',
-                    overflow: TextOverflow.ellipsis,
-                    style: muted?.merge(mono)),
-                trailing: Row(mainAxisSize: MainAxisSize.min, children: [
-                  IconButton(
-                    tooltip: 'Copy public key',
-                    icon: const Icon(Icons.copy, size: 18),
-                    onPressed: () =>
-                        copyText(context, k.publicKey, 'Public key'),
-                  ),
-                  PopupMenuButton<VoidCallback>(
-                    icon: const Icon(Icons.more_vert, size: 18),
-                    onSelected: (f) => f(),
-                    itemBuilder: (_) => [
-                      PopupMenuItem(
+                subtitle: Text(
+                  '${k.type}  ${fingerprintOf(k.publicKey)}',
+                  overflow: TextOverflow.ellipsis,
+                  style: muted?.merge(mono),
+                ),
+                trailing: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    IconButton(
+                      tooltip: 'Copy public key',
+                      icon: const Icon(Icons.copy, size: 18),
+                      onPressed: () =>
+                          copyText(context, k.publicKey, 'Public key'),
+                    ),
+                    PopupMenuButton<VoidCallback>(
+                      icon: const Icon(Icons.more_vert, size: 18),
+                      onSelected: (f) => f(),
+                      itemBuilder: (_) => [
+                        PopupMenuItem(
                           value: () => _deploy(context, k),
-                          child: const Text('Install on a host…')),
-                      PopupMenuItem(
+                          child: const Text('Install on a host…'),
+                        ),
+                        PopupMenuItem(
                           value: () =>
                               copyText(context, k.privateKey, 'Private key'),
-                          child: const Text('Copy private key')),
-                      PopupMenuItem(
+                          child: const Text('Copy private key'),
+                        ),
+                        PopupMenuItem(
                           value: () => _deleteKey(context, k),
-                          child: const Text('Delete')),
-                    ],
-                  ),
-                ]),
+                          child: const Text('Delete'),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
               ),
             ),
           ),
-        PageHeader('Identities', actions: [
-          FilledButton.icon(
-            onPressed: () => _editIdentity(context),
-            icon: const Icon(Icons.add, size: 18),
-            label: const Text('New identity'),
-          ),
-        ]),
+        PageHeader(
+          'Identities',
+          actions: [
+            FilledButton.icon(
+              onPressed: () => _editIdentity(context),
+              icon: const Icon(Icons.add, size: 18),
+              label: const Text('New identity'),
+            ),
+          ],
+        ),
         Padding(
           padding: const EdgeInsets.fromLTRB(20, 0, 20, 12),
           child: Text(
-              'An identity is a username with a password or key that several '
-              'hosts can share. Change it once and every host follows.',
-              style: muted),
+            'An identity is a username with a password or key that several '
+            'hosts can share. Change it once and every host follows.',
+            style: muted,
+          ),
         ),
         for (final i in identities)
           Padding(
@@ -254,13 +298,14 @@ class KeychainPage extends StatelessWidget {
                 leading: const Icon(Icons.badge_outlined),
                 title: Text(i.title),
                 subtitle: Text(
-                    [
-                      i.username,
-                      if (i.password.isNotEmpty) 'password',
-                      if (_data.keys[i.keyId] != null)
-                        'key: ${_data.keys[i.keyId]!.label}',
-                    ].join('  ·  '),
-                    style: muted),
+                  [
+                    i.username,
+                    if (i.password.isNotEmpty) 'password',
+                    if (_data.keys[i.keyId] != null)
+                      'key: ${_data.keys[i.keyId]!.label}',
+                  ].join('  ·  '),
+                  style: muted,
+                ),
                 onTap: () => _editIdentity(context, i),
                 trailing: IconButton(
                   tooltip: 'Delete',
@@ -290,14 +335,19 @@ class _PasteKeyDialogState extends State<_PasteKeyDialog> {
 
   @override
   Widget build(BuildContext context) => FormDialog(
-        title: 'Paste a private key',
-        saveLabel: 'Next',
-        onSave: () => Navigator.pop(context, _pem.text),
-        children: [
-          field(_pem, 'Private key',
-              hint: '-----BEGIN OPENSSH PRIVATE KEY-----', lines: 8, code: true),
-        ],
-      );
+    title: 'Paste a private key',
+    saveLabel: 'Next',
+    onSave: () => Navigator.pop(context, _pem.text),
+    children: [
+      field(
+        _pem,
+        'Private key',
+        hint: '-----BEGIN OPENSSH PRIVATE KEY-----',
+        lines: 8,
+        code: true,
+      ),
+    ],
+  );
 }
 
 class _IdentityDialog extends StatefulWidget {
@@ -318,36 +368,31 @@ class _IdentityDialogState extends State<_IdentityDialog> {
 
   @override
   Widget build(BuildContext context) => FormDialog(
-        title: _i == null ? 'New identity' : 'Edit identity',
-        onSave: () {
-          if (_username.text.trim().isEmpty) {
-            toast(context, 'A username is required');
-            return;
-          }
-          Navigator.pop(
-            context,
-            Identity(
-              id: _i?.id,
-              label: _label.text.trim(),
-              username: _username.text.trim(),
-              password: _password.text,
-              keyId: _keyId,
-            ),
-          );
-        },
-        children: [
-          field(_label, 'Label', hint: 'Optional'),
-          field(_username, 'Username'),
-          field(_password, 'Password', obscure: true),
-          choice<String>(
-            'SSH key',
-            _keyId,
-            {
-              null: 'None',
-              for (final k in widget.data.keys.all) k.id: k.label,
-            },
-            (v) => setState(() => _keyId = v),
-          ),
-        ],
+    title: _i == null ? 'New identity' : 'Edit identity',
+    onSave: () {
+      if (_username.text.trim().isEmpty) {
+        toast(context, 'A username is required');
+        return;
+      }
+      Navigator.pop(
+        context,
+        Identity(
+          id: _i?.id,
+          label: _label.text.trim(),
+          username: _username.text.trim(),
+          password: _password.text,
+          keyId: _keyId,
+        ),
       );
+    },
+    children: [
+      field(_label, 'Label', hint: 'Optional'),
+      field(_username, 'Username'),
+      field(_password, 'Password', obscure: true),
+      choice<String>('SSH key', _keyId, {
+        null: 'None',
+        for (final k in widget.data.keys.all) k.id: k.label,
+      }, (v) => setState(() => _keyId = v)),
+    ],
+  );
 }

@@ -37,13 +37,15 @@ Future<bool> confirm(
           content: SizedBox(width: 420, child: Text(body)),
           actions: [
             TextButton(
-                onPressed: () => Navigator.pop(c, false),
-                child: const Text('Cancel')),
+              onPressed: () => Navigator.pop(c, false),
+              child: const Text('Cancel'),
+            ),
             FilledButton(
               style: danger
                   ? FilledButton.styleFrom(
                       backgroundColor: scheme.error,
-                      foregroundColor: scheme.onError)
+                      foregroundColor: scheme.onError,
+                    )
                   : null,
               onPressed: () => Navigator.pop(c, true),
               child: Text(action),
@@ -100,7 +102,9 @@ Future<List<String>?> promptFields(
         ),
         actions: [
           TextButton(
-              onPressed: () => Navigator.pop(c), child: const Text('Cancel')),
+            onPressed: () => Navigator.pop(c),
+            child: const Text('Cancel'),
+          ),
           FilledButton(onPressed: submit, child: Text(action)),
         ],
       );
@@ -115,7 +119,9 @@ Future<T?> busy<T>(BuildContext context, Future<T> Function() work) async {
     context: context,
     barrierDismissible: false,
     builder: (_) => const PopScope(
-        canPop: false, child: Center(child: CircularProgressIndicator())),
+      canPop: false,
+      child: Center(child: CircularProgressIndicator()),
+    ),
   );
   final nav = Navigator.of(context, rootNavigator: true);
   final messenger = ScaffoldMessenger.of(context);
@@ -139,18 +145,18 @@ class PageHeader extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => Padding(
-        padding: const EdgeInsets.fromLTRB(20, 16, 20, 12),
-        child: Wrap(
-          alignment: WrapAlignment.spaceBetween,
-          crossAxisAlignment: WrapCrossAlignment.center,
-          spacing: 12,
-          runSpacing: 10,
-          children: [
-            Text(title, style: Theme.of(context).textTheme.titleLarge),
-            Wrap(spacing: 8, runSpacing: 8, children: actions),
-          ],
-        ),
-      );
+    padding: const EdgeInsets.fromLTRB(20, 16, 20, 12),
+    child: Wrap(
+      alignment: WrapAlignment.spaceBetween,
+      crossAxisAlignment: WrapCrossAlignment.center,
+      spacing: 12,
+      runSpacing: 10,
+      children: [
+        Text(title, style: Theme.of(context).textTheme.titleLarge),
+        Wrap(spacing: 8, runSpacing: 8, children: actions),
+      ],
+    ),
+  );
 }
 
 class EmptyState extends StatelessWidget {
@@ -172,10 +178,13 @@ class EmptyState extends StatelessWidget {
             const SizedBox(height: 12),
             Text(title, style: t.textTheme.titleMedium),
             const SizedBox(height: 6),
-            Text(hint,
-                textAlign: TextAlign.center,
-                style: t.textTheme.bodyMedium
-                    ?.copyWith(color: t.colorScheme.onSurfaceVariant)),
+            Text(
+              hint,
+              textAlign: TextAlign.center,
+              style: t.textTheme.bodyMedium?.copyWith(
+                color: t.colorScheme.onSurfaceVariant,
+              ),
+            ),
           ],
         ),
       ),
@@ -199,56 +208,68 @@ class FormDialog extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => AlertDialog(
-        title: Text(title),
-        content: SizedBox(
-          width: 460,
-          child: SingleChildScrollView(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                for (final w in children)
-                  Padding(
-                      padding: const EdgeInsets.only(bottom: 12), child: w),
-              ],
-            ),
-          ),
+    title: Text(title),
+    content: SizedBox(
+      width: 460,
+      child: SingleChildScrollView(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            for (final w in children)
+              Padding(padding: const EdgeInsets.only(bottom: 12), child: w),
+          ],
         ),
-        actions: [
-          TextButton(
-              onPressed: () => Navigator.pop(context),
-              child: const Text('Cancel')),
-          FilledButton(onPressed: onSave, child: Text(saveLabel)),
-        ],
-      );
+      ),
+    ),
+    actions: [
+      TextButton(
+        onPressed: () => Navigator.pop(context),
+        child: const Text('Cancel'),
+      ),
+      FilledButton(onPressed: onSave, child: Text(saveLabel)),
+    ],
+  );
 }
 
-TextField field(TextEditingController c, String label,
-        {bool obscure = false, String? hint, int lines = 1, bool code = false}) =>
-    TextField(
-      controller: c,
-      obscureText: obscure,
-      maxLines: lines,
-      style: code ? mono.copyWith(fontSize: 13) : null,
-      decoration: InputDecoration(
-          labelText: label, hintText: hint, alignLabelWithHint: true),
-    );
+TextField field(
+  TextEditingController c,
+  String label, {
+  bool obscure = false,
+  String? hint,
+  int lines = 1,
+  bool code = false,
+}) => TextField(
+  controller: c,
+  obscureText: obscure,
+  maxLines: lines,
+  style: code ? mono.copyWith(fontSize: 13) : null,
+  decoration: InputDecoration(
+    labelText: label,
+    hintText: hint,
+    alignLabelWithHint: true,
+  ),
+);
 
 /// A dropdown with an explicit "none" entry.
-Widget choice<T>(String label, T? value, Map<T?, String> options,
-        ValueChanged<T?> onChanged) =>
-    DropdownButtonFormField<T?>(
-      initialValue: options.containsKey(value) ? value : null,
-      isExpanded: true,
-      decoration: InputDecoration(labelText: label),
-      items: [
-        for (final e in options.entries)
-          DropdownMenuItem(
-              value: e.key,
-              child: Text(e.value, overflow: TextOverflow.ellipsis)),
-      ],
-      onChanged: onChanged,
-    );
+Widget choice<T>(
+  String label,
+  T? value,
+  Map<T?, String> options,
+  ValueChanged<T?> onChanged,
+) => DropdownButtonFormField<T?>(
+  initialValue: options.containsKey(value) ? value : null,
+  isExpanded: true,
+  decoration: InputDecoration(labelText: label),
+  items: [
+    for (final e in options.entries)
+      DropdownMenuItem(
+        value: e.key,
+        child: Text(e.value, overflow: TextOverflow.ellipsis),
+      ),
+  ],
+  onChanged: onChanged,
+);
 
 /// Answers connection prompts with dialogs on the root navigator.
 class DialogPrompter implements Prompter {
@@ -266,36 +287,45 @@ class DialogPrompter implements Prompter {
       );
 
   @override
-  Future<bool> confirmChangedHost(String host, String type,
-          String oldFingerprint, String fingerprint) =>
-      confirm(
-        _context,
-        'Server key has changed',
-        'The key $host presents is different from the one saved in this '
-            'vault. That happens after a server reinstall, but it is also '
-            'what an interception attack looks like.\n\n'
-            'Saved:  $oldFingerprint\n'
-            'Now ($type):  $fingerprint\n\n'
-            'Replace the saved key only if you know why it changed.',
-        action: 'Replace key and connect',
-        danger: true,
-      );
+  Future<bool> confirmChangedHost(
+    String host,
+    String type,
+    String oldFingerprint,
+    String fingerprint,
+  ) => confirm(
+    _context,
+    'Server key has changed',
+    'The key $host presents is different from the one saved in this '
+        'vault. That happens after a server reinstall, but it is also '
+        'what an interception attack looks like.\n\n'
+        'Saved:  $oldFingerprint\n'
+        'Now ($type):  $fingerprint\n\n'
+        'Replace the saved key only if you know why it changed.',
+    action: 'Replace key and connect',
+    danger: true,
+  );
 
   @override
   Future<String?> askSecret(String title, String prompt) async =>
-      (await promptFields(_context, title,
-              labels: [prompt], obscure: [true], action: 'Continue'))
-          ?.first;
-
-  @override
-  Future<List<String>?> askInteractive(String title, String instruction,
-          List<SSHUserInfoPrompt> prompts) =>
-      promptFields(
+      (await promptFields(
         _context,
         title,
-        message: instruction,
-        labels: [for (final p in prompts) p.promptText.trim()],
-        obscure: [for (final p in prompts) !p.echo],
+        labels: [prompt],
+        obscure: [true],
         action: 'Continue',
-      );
+      ))?.first;
+
+  @override
+  Future<List<String>?> askInteractive(
+    String title,
+    String instruction,
+    List<SSHUserInfoPrompt> prompts,
+  ) => promptFields(
+    _context,
+    title,
+    message: instruction,
+    labels: [for (final p in prompts) p.promptText.trim()],
+    obscure: [for (final p in prompts) !p.echo],
+    action: 'Continue',
+  );
 }

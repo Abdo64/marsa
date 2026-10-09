@@ -35,63 +35,74 @@ class AppShell extends StatelessWidget {
 
   Future<void> _lock(BuildContext context) async {
     final ws = workspace;
-    final open = ws.tabs.length +
+    final open =
+        ws.tabs.length +
         ws.vault.data.forwards.all.where((f) => ws.forwards.isOn(f.id)).length;
     if (open > 0 &&
-        !await confirm(context, 'Lock the vault?',
-            'This closes $open open session(s) and forward(s).',
-            action: 'Lock')) {
+        !await confirm(
+          context,
+          'Lock the vault?',
+          'This closes $open open session(s) and forward(s).',
+          action: 'Lock',
+        )) {
       return;
     }
     await onLock();
   }
 
   Widget _page() => switch (workspace.section) {
-        Section.hosts => HostsPage(workspace),
-        Section.keychain => KeychainPage(workspace),
-        Section.forwards => ForwardsPage(workspace),
-        Section.snippets => SnippetsPage(workspace),
-        Section.knownHosts => KnownHostsPage(workspace),
-        Section.settings => SettingsPage(
-            workspace: workspace,
-            registry: registry,
-            settings: settings,
-            onLock: onLock),
-      };
+    Section.hosts => HostsPage(workspace),
+    Section.keychain => KeychainPage(workspace),
+    Section.forwards => ForwardsPage(workspace),
+    Section.snippets => SnippetsPage(workspace),
+    Section.knownHosts => KnownHostsPage(workspace),
+    Section.settings => SettingsPage(
+      workspace: workspace,
+      registry: registry,
+      settings: settings,
+      onLock: onLock,
+    ),
+  };
 
   @override
   Widget build(BuildContext context) => ListenableBuilder(
-        listenable: Listenable.merge([workspace, workspace.vault]),
-        builder: (context, _) {
-          final ws = workspace;
-          final compact = MediaQuery.sizeOf(context).width < 820;
-          final index = ws.active == null ? 0 : 1 + ws.tabs.indexOf(ws.active!);
-          return Scaffold(
-            body: SafeArea(
-              child: Row(children: [
-                _Sidebar(ws, compact, () => _lock(context)),
-                const VerticalDivider(width: 1),
-                Expanded(
-                  child: IndexedStack(
-                    index: index,
-                    children: [
-                      _page(),
-                      for (final tab in ws.tabs)
-                        KeyedSubtree(
-                          key: ObjectKey(tab),
-                          child: tab is TerminalTab
-                              ? TerminalTabView(ws, tab, settings,
-                                  visible: tab == ws.active)
-                              : SftpTabView(ws, tab as SftpTab),
-                        ),
-                    ],
-                  ),
+    listenable: Listenable.merge([workspace, workspace.vault, registry]),
+    builder: (context, _) {
+      final ws = workspace;
+      final compact = MediaQuery.sizeOf(context).width < 820;
+      final index = ws.active == null ? 0 : 1 + ws.tabs.indexOf(ws.active!);
+      return Scaffold(
+        body: SafeArea(
+          child: Row(
+            children: [
+              _Sidebar(ws, compact, () => _lock(context)),
+              const VerticalDivider(width: 1),
+              Expanded(
+                child: IndexedStack(
+                  index: index,
+                  children: [
+                    _page(),
+                    for (final tab in ws.tabs)
+                      KeyedSubtree(
+                        key: ObjectKey(tab),
+                        child: tab is TerminalTab
+                            ? TerminalTabView(
+                                ws,
+                                tab,
+                                settings,
+                                visible: tab == ws.active,
+                              )
+                            : SftpTabView(ws, tab as SftpTab),
+                      ),
+                  ],
                 ),
-              ]),
-            ),
-          );
-        },
+              ),
+            ],
+          ),
+        ),
       );
+    },
+  );
 }
 
 class _Sidebar extends StatelessWidget {
@@ -110,19 +121,28 @@ class _Sidebar extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           Padding(
-            padding: EdgeInsets.fromLTRB(compact ? 8 : 14, 12, 6, 8),
-            child: Row(children: [
-              if (!compact) ...[
-                Icon(Icons.anchor, size: 20, color: scheme.primary),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: Text(ws.vault.info.name,
+            padding: EdgeInsets.fromLTRB(
+              compact ? 4 : 14,
+              12,
+              compact ? 4 : 6,
+              8,
+            ),
+            child: Row(
+              children: [
+                if (!compact) ...[
+                  Icon(Icons.anchor, size: 20, color: scheme.primary),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      ws.vault.info.name,
                       overflow: TextOverflow.ellipsis,
-                      style: Theme.of(context).textTheme.titleSmall),
-                ),
+                      style: Theme.of(context).textTheme.titleSmall,
+                    ),
+                  ),
+                ],
+                _SyncButton(ws.vault),
               ],
-              _SyncButton(ws.vault),
-            ]),
+            ),
           ),
           Expanded(
             child: ListView(
@@ -141,11 +161,12 @@ class _Sidebar extends StatelessWidget {
                   if (!compact)
                     Padding(
                       padding: const EdgeInsets.fromLTRB(10, 2, 0, 4),
-                      child: Text('SESSIONS',
-                          style: Theme.of(context)
-                              .textTheme
-                              .labelSmall
-                              ?.copyWith(color: scheme.onSurfaceVariant)),
+                      child: Text(
+                        'SESSIONS',
+                        style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                          color: scheme.onSurfaceVariant,
+                        ),
+                      ),
                     ),
                   for (final tab in ws.tabs)
                     ListenableBuilder(
@@ -218,12 +239,13 @@ class _Item extends StatelessWidget {
           child: InkWell(
             borderRadius: BorderRadius.circular(8),
             onTap: onTap,
-            // Middle-click style close is not available; long-press closes in
-            // the compact rail where there is no room for the button.
+            // The compact rail has no room for a close button.
             onLongPress: compact ? onClose : null,
             child: Padding(
               padding: EdgeInsets.symmetric(
-                  horizontal: compact ? 0 : 10, vertical: 8),
+                horizontal: compact ? 0 : 10,
+                vertical: 8,
+              ),
               child: Row(
                 mainAxisAlignment: compact
                     ? MainAxisAlignment.center
@@ -233,9 +255,11 @@ class _Item extends StatelessWidget {
                   if (!compact) ...[
                     const SizedBox(width: 10),
                     Expanded(
-                      child: Text(label,
-                          overflow: TextOverflow.ellipsis,
-                          style: TextStyle(color: fg, fontSize: 13)),
+                      child: Text(
+                        label,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(color: fg, fontSize: 13),
+                      ),
                     ),
                     if (onClose != null)
                       InkWell(
@@ -266,7 +290,8 @@ class _SyncButton extends StatelessWidget {
         final r = await promptFields(
           context,
           'Vault password changed',
-          message: 'The master password was changed on another device. Enter '
+          message:
+              'The master password was changed on another device. Enter '
               'the new one to keep syncing.',
           labels: ['New master password'],
           obscure: [true],
@@ -285,33 +310,30 @@ class _SyncButton extends StatelessWidget {
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
     final (icon, color, tip) = switch (vault.syncState) {
-      SyncState.off => (
-          Icons.cloud_off_outlined,
-          scheme.outline,
-          'Not synced'
-        ),
+      SyncState.off => (Icons.cloud_off_outlined, scheme.outline, 'Not synced'),
       SyncState.idle => (
-          Icons.cloud_done_outlined,
-          scheme.primary,
-          'Synced. Click to sync now.'
-        ),
+        Icons.cloud_done_outlined,
+        scheme.primary,
+        'Synced. Click to sync now.',
+      ),
       SyncState.syncing => (Icons.sync, scheme.primary, 'Syncing…'),
       SyncState.error => (
-          Icons.sync_problem,
-          scheme.error,
-          'Sync failed: ${vault.syncError}'
-        ),
+        Icons.sync_problem,
+        scheme.error,
+        'Sync failed: ${vault.syncError}',
+      ),
       SyncState.passwordChanged => (
-          Icons.key_off_outlined,
-          scheme.error,
-          'Password changed on another device'
-        ),
+        Icons.key_off_outlined,
+        scheme.error,
+        'Password changed on another device',
+      ),
     };
     return IconButton(
       tooltip: tip,
       icon: Icon(icon, size: 18, color: color),
-      onPressed:
-          vault.syncState == SyncState.syncing ? null : () => _tap(context),
+      onPressed: vault.syncState == SyncState.syncing
+          ? null
+          : () => _tap(context),
     );
   }
 }

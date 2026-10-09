@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'dart:typed_data';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:marsa/core/crypto.dart';
@@ -29,8 +30,10 @@ void main() {
     expect(open(key, Envelope.parse(text)), {'hello': 'عالم'});
 
     final other = deriveKeySync('wrong', kdf);
-    expect(() => open(other, Envelope.parse(text)),
-        throwsA(isA<WrongPassword>()));
+    expect(
+      () => open(other, Envelope.parse(text)),
+      throwsA(isA<WrongPassword>()),
+    );
 
     final env = Envelope.parse(text);
     env.ciphertext[0] ^= 1;
@@ -54,11 +57,13 @@ void main() {
     b.merge(a);
     expect(b.hosts.all, isEmpty);
     // The stale copy must not resurrect the record.
-    a.merge(VaultData()..load({
-      'hosts': {
-        'items': [h.toJson()]
-      }
-    }));
+    a.merge(
+      VaultData()..load({
+        'hosts': {
+          'items': [h.toJson()],
+        },
+      }),
+    );
     expect(a.hosts.all, isEmpty);
   });
 
@@ -76,8 +81,10 @@ void main() {
 
     final again = await device('a');
     expect(again.vaults.single.name, 'Personal');
-    await expectLater(again.unlock(again.vaults.single, 'nope'),
-        throwsA(isA<WrongPassword>()));
+    await expectLater(
+      again.unlock(again.vaults.single, 'nope'),
+      throwsA(isA<WrongPassword>()),
+    );
     final u = await again.unlock(again.vaults.single, 'pw-one');
     expect(u.data.hosts.all.single.address, 'db.example.com');
   });
@@ -90,7 +97,9 @@ void main() {
 
     final regB = await device('b');
     await expectLater(
-        regB.join('Team', 'bad', shared()), throwsA(isA<WrongPassword>()));
+      regB.join('Team', 'bad', shared()),
+      throwsA(isA<WrongPassword>()),
+    );
     final b = await regB.join('Team', 'pw', shared());
     expect(b.data.hosts.all.single.label, 'from-a');
 
@@ -121,7 +130,9 @@ void main() {
     await b.syncNow();
     expect(b.syncState, SyncState.passwordChanged);
     await expectLater(
-        b.adoptRemotePassword('old'), throwsA(isA<WrongPassword>()));
+      b.adoptRemotePassword('old'),
+      throwsA(isA<WrongPassword>()),
+    );
     await b.adoptRemotePassword('new');
     expect(b.syncState, SyncState.idle, reason: b.syncError);
     expect(b.data.hosts.all.single.label, 'after');
@@ -133,6 +144,76 @@ void main() {
     await u.lock();
   });
 
+  test(
+    'a remembered vault opens without the password until it is forgotten',
+    () async {
+      final store = _MemoryKeyStore();
+      Future<VaultRegistry> boot() async {
+        final r = VaultRegistry(Directory('${tmp.path}/a'), keyStore: store);
+        await r.load();
+        return r;
+      }
+
+      var reg = await boot();
+      final v = await reg.create('Personal', 'pw-one');
+      v.data.hosts.put(Host(label: 'db', address: 'db.example.com'));
+      await v.commit();
+      expect(await reg.unlockRemembered(v.info), isNull);
+      await reg.remember(v);
+      await v.lock();
+      // The stored secret is the vault key, never the password itself.
+      expect(store.keys.values.single.length, 32);
+
+      reg = await boot();
+      expect(reg.lastId, reg.vaults.single.id);
+      expect(reg.vaults.single.remembered, isTrue);
+      final again = (await reg.unlockRemembered(reg.vaults.single))!;
+      expect(again.data.hosts.all.single.label, 'db');
+
+      // Changing the password keeps the device remembered with the new key.
+      await again.changePassword('pw-two');
+      await again.lock();
+      reg = await boot();
+      final third = (await reg.unlockRemembered(reg.vaults.single))!;
+      await third.lock();
+      await expectLater(
+        reg.unlock(reg.vaults.single, 'pw-one'),
+        throwsA(isA<WrongPassword>()),
+      );
+
+      // A stored key that no longer fits is dropped, not trusted.
+      store.keys[reg.vaults.single.id] = randomBytes(32);
+      expect(await reg.unlockRemembered(reg.vaults.single), isNull);
+      expect(reg.vaults.single.remembered, isFalse);
+      expect(store.keys, isEmpty);
+
+      // An unreadable store asks for the password but keeps the setting.
+      final byPassword = await reg.unlock(reg.vaults.single, 'pw-two');
+      await reg.remember(byPassword);
+      store.broken = true;
+      expect(await reg.unlockRemembered(reg.vaults.single), isNull);
+      expect(reg.vaults.single.remembered, isTrue);
+      store.broken = false;
+
+      await reg.forget(reg.vaults.single);
+      expect(store.keys, isEmpty);
+      expect(await reg.unlockRemembered(reg.vaults.single), isNull);
+      await byPassword.lock();
+    },
+  );
+
+  test('reads the vault list written by the first release', () async {
+    final dir = Directory('${tmp.path}/old')..createSync();
+    File(
+      '${dir.path}/vaults.json',
+    ).writeAsStringSync('[{"id":"abc","name":"Personal"}]');
+    final reg = VaultRegistry(dir);
+    await reg.load();
+    expect(reg.vaults.single.name, 'Personal');
+    expect(reg.vaults.single.remembered, isFalse);
+    expect(reg.lastId, isNull);
+  });
+
   test('a different vault at the sync location is refused', () async {
     final a = await (await device('a')).create('One', 'pw');
     await a.setSync(shared());
@@ -142,4 +223,22 @@ void main() {
     await a.lock();
     await other.lock();
   });
+}
+
+class _MemoryKeyStore implements KeyStore {
+  final keys = <String, Uint8List>{};
+  bool broken = false;
+
+  @override
+  Future<Uint8List?> read(String id) async {
+    if (broken) throw StateError('keychain locked');
+    return keys[id];
+  }
+
+  @override
+  Future<void> write(String id, Uint8List key) async =>
+      keys[id] = Uint8List.fromList(key);
+
+  @override
+  Future<void> delete(String id) async => keys.remove(id);
 }

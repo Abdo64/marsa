@@ -1,0 +1,74 @@
+name: build
+
+# Runs for version tags and when started by hand, not on every push: macOS
+# runners are billed at a high multiple on private repositories.
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  test:
+    # macOS because the end-to-end tests start the system's own sshd.
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+      - run: flutter pub get
+      - run: flutter analyze
+      - run: flutter test
+
+  windows:
+    needs: test
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+      - run: flutter build windows --release
+      - name: Package
+        shell: pwsh
+        run: Compress-Archive -Path build/windows/x64/runner/Release/* -DestinationPath marsa-windows-x64.zip
+      - uses: actions/upload-artifact@v4
+        with:
+          name: marsa-windows-x64
+          path: marsa-windows-x64.zip
+
+  macos:
+    needs: test
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+      - run: flutter build macos --release
+      - name: Package
+        run: ditto -c -k --keepParent build/macos/Build/Products/Release/Marsa.app marsa-macos-universal.zip
+      - uses: actions/upload-artifact@v4
+        with:
+          name: marsa-macos-universal
+          path: marsa-macos-universal.zip
+
+  release:
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: [windows, macos]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          merge-multiple: true
+      - uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            marsa-windows-x64.zip
+            marsa-macos-universal.zip

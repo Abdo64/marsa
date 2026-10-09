@@ -16,11 +16,10 @@ Future<SyncConfig?> showSyncDialog(
   bool joining = false,
   VaultData? data,
   SyncConfig? current,
-}) =>
-    showDialog<SyncConfig>(
-      context: context,
-      builder: (_) => _SyncDialog(vaultName, joining, data, current),
-    );
+}) => showDialog<SyncConfig>(
+  context: context,
+  builder: (_) => _SyncDialog(vaultName, joining, data, current),
+);
 
 class _SyncDialog extends StatefulWidget {
   const _SyncDialog(this.vaultName, this.joining, this.data, this.current);
@@ -39,22 +38,26 @@ class _SyncDialogState extends State<_SyncDialog> {
       '${widget.vaultName.trim().replaceAll(RegExp(r'[^A-Za-z0-9._-]+'), '-')}'
       '.marsa';
   late final _folderPath = TextEditingController(
-      text: widget.current?.type == SyncConfig.folder
-          ? widget.current!.path
-          : '');
+    text: widget.current?.type == SyncConfig.folder ? widget.current!.path : '',
+  );
   late final _host = TextEditingController(text: widget.current?.host ?? '');
-  late final _port =
-      TextEditingController(text: '${widget.current?.port ?? 22}');
-  late final _user =
-      TextEditingController(text: widget.current?.username ?? '');
-  late final _password =
-      TextEditingController(text: widget.current?.password ?? '');
-  late final _key =
-      TextEditingController(text: widget.current?.privateKey ?? '');
+  late final _port = TextEditingController(
+    text: '${widget.current?.port ?? 22}',
+  );
+  late final _user = TextEditingController(
+    text: widget.current?.username ?? '',
+  );
+  late final _password = TextEditingController(
+    text: widget.current?.password ?? '',
+  );
+  late final _key = TextEditingController(
+    text: widget.current?.privateKey ?? '',
+  );
   late final _remotePath = TextEditingController(
-      text: widget.current?.type == SyncConfig.sftp
-          ? widget.current!.path
-          : 'marsa/$_fileName');
+    text: widget.current?.type == SyncConfig.sftp
+        ? widget.current!.path
+        : 'marsa/$_fileName',
+  );
 
   Future<void> _browse() async {
     if (widget.joining) {
@@ -62,10 +65,12 @@ class _SyncDialogState extends State<_SyncDialog> {
       if (f?.path != null) setState(() => _folderPath.text = f!.path!);
     } else {
       final dir = await FilePicker.getDirectoryPath(
-          dialogTitle: 'Choose the folder to sync through');
+        dialogTitle: 'Choose the folder to sync through',
+      );
       if (dir != null) {
-        setState(() =>
-            _folderPath.text = '$dir${Platform.pathSeparator}$_fileName');
+        setState(
+          () => _folderPath.text = '$dir${Platform.pathSeparator}$_fileName',
+        );
       }
     }
   }
@@ -102,7 +107,8 @@ class _SyncDialogState extends State<_SyncDialog> {
         toast(context, 'Server, username and path are required');
         return;
       }
-      final same = widget.current?.host == _host.text.trim() &&
+      final same =
+          widget.current?.host == _host.text.trim() &&
           widget.current?.port == (int.tryParse(_port.text) ?? 22);
       cfg = SyncConfig(
         type: _type,
@@ -122,10 +128,9 @@ class _SyncDialogState extends State<_SyncDialog> {
   @override
   Widget build(BuildContext context) {
     final hosts = widget.data?.hosts.all.toList() ?? const <Host>[];
-    final muted = Theme.of(context)
-        .textTheme
-        .bodySmall
-        ?.copyWith(color: Theme.of(context).colorScheme.onSurfaceVariant);
+    final muted = Theme.of(context).textTheme.bodySmall?.copyWith(
+      color: Theme.of(context).colorScheme.onSurfaceVariant,
+    );
     return FormDialog(
       title: widget.joining ? 'Join a synced vault' : 'Sync this vault',
       saveLabel: widget.joining ? 'Continue' : 'Save and sync',
@@ -134,55 +139,76 @@ class _SyncDialogState extends State<_SyncDialog> {
         SegmentedButton<String>(
           segments: const [
             ButtonSegment(
-                value: SyncConfig.sftp,
-                icon: Icon(Icons.dns_outlined),
-                label: Text('Your server (SFTP)')),
+              value: SyncConfig.sftp,
+              icon: Icon(Icons.dns_outlined),
+              label: Text('Your server (SFTP)'),
+            ),
             ButtonSegment(
-                value: SyncConfig.folder,
-                icon: Icon(Icons.folder_outlined),
-                label: Text('Folder')),
+              value: SyncConfig.folder,
+              icon: Icon(Icons.folder_outlined),
+              label: Text('Folder'),
+            ),
           ],
           selected: {_type},
           onSelectionChanged: (s) => setState(() => _type = s.first),
         ),
         if (_type == SyncConfig.folder) ...[
           Text(
-              widget.joining
-                  ? 'Pick the .marsa file inside your cloud-drive or shared '
+            widget.joining
+                ? 'Pick the .marsa file inside your cloud-drive or shared '
                       'folder.'
-                  : 'Pick a folder that your devices already share: iCloud '
+                : 'Pick a folder that your devices already share: iCloud '
                       'Drive, OneDrive, Dropbox, Syncthing, a network share.',
-              style: muted),
-          Row(children: [
-            Expanded(child: field(_folderPath, 'Vault file', code: true)),
-            const SizedBox(width: 8),
-            OutlinedButton(onPressed: _browse, child: const Text('Browse')),
-          ]),
+            style: muted,
+          ),
+          Row(
+            children: [
+              Expanded(child: field(_folderPath, 'Vault file', code: true)),
+              const SizedBox(width: 8),
+              OutlinedButton(onPressed: _browse, child: const Text('Browse')),
+            ],
+          ),
         ] else ...[
           Text(
-              'The encrypted vault file is kept on a server you control and '
-              'every device reads and writes it over SFTP. The server never '
-              'sees its contents.',
-              style: muted),
+            'The encrypted vault file is kept on a server you control and '
+            'every device reads and writes it over SFTP. The server never '
+            'sees its contents.',
+            style: muted,
+          ),
           if (hosts.isNotEmpty)
-            choice<Host>('Fill in from a saved host', null,
-                {null: 'Choose…', for (final h in hosts) h: h.title}, _fillFrom),
-          Row(children: [
-            Expanded(flex: 3, child: field(_host, 'Server address')),
-            const SizedBox(width: 8),
-            Expanded(child: field(_port, 'Port')),
-          ]),
+            choice<Host>('Fill in from a saved host', null, {
+              null: 'Choose…',
+              for (final h in hosts) h: h.title,
+            }, _fillFrom),
+          Row(
+            children: [
+              Expanded(flex: 3, child: field(_host, 'Server address')),
+              const SizedBox(width: 8),
+              Expanded(child: field(_port, 'Port')),
+            ],
+          ),
           field(_user, 'Username'),
           field(_password, 'Password', obscure: true),
-          Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Expanded(
-                child: field(_key, 'Private key (optional, unencrypted PEM)',
-                    lines: 3, code: true)),
-            const SizedBox(width: 8),
-            OutlinedButton(onPressed: _loadKey, child: const Text('Load')),
-          ]),
-          field(_remotePath, 'Path of the vault file on the server',
-              code: true),
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Expanded(
+                child: field(
+                  _key,
+                  'Private key (optional, unencrypted PEM)',
+                  lines: 3,
+                  code: true,
+                ),
+              ),
+              const SizedBox(width: 8),
+              OutlinedButton(onPressed: _loadKey, child: const Text('Load')),
+            ],
+          ),
+          field(
+            _remotePath,
+            'Path of the vault file on the server',
+            code: true,
+          ),
         ],
       ],
     );

@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:path_provider/path_provider.dart';
 
 import 'core/vault.dart';
+import 'platform/keystore.dart';
 import 'ssh/sessions.dart';
 import 'ui/common.dart';
 import 'ui/shell.dart';
@@ -13,7 +14,10 @@ import 'ui/unlock.dart';
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   final dir = await getApplicationSupportDirectory();
-  final registry = VaultRegistry(Directory('${dir.path}/vaults'));
+  final registry = VaultRegistry(
+    Directory('${dir.path}/vaults'),
+    keyStore: SystemKeyStore(),
+  );
   await registry.load();
   final settings = AppSettings(File('${dir.path}/settings.json'));
   await settings.load();
@@ -32,35 +36,44 @@ class MarsaApp extends StatefulWidget {
 class _MarsaAppState extends State<MarsaApp> {
   Workspace? _workspace;
 
+  // Only a fresh launch reopens a remembered vault by itself; after an
+  // explicit Lock the unlock screen stays put.
+  bool _launch = true;
+
   Future<void> _lock() async {
     final ws = _workspace;
-    setState(() => _workspace = null);
+    setState(() {
+      _workspace = null;
+      _launch = false;
+    });
     await ws?.shutdown();
     ws?.dispose();
   }
 
   @override
   Widget build(BuildContext context) => ListenableBuilder(
-        listenable: widget.settings,
-        builder: (context, _) => MaterialApp(
-          title: 'Marsa',
-          debugShowCheckedModeBanner: false,
-          navigatorKey: navigatorKey,
-          theme: buildTheme(Brightness.light),
-          darkTheme: buildTheme(Brightness.dark),
-          themeMode: widget.settings.themeMode,
-          home: _workspace == null
-              ? UnlockPage(
-                  registry: widget.registry,
-                  onUnlocked: (vault) => setState(
-                      () => _workspace = Workspace(vault, DialogPrompter())),
-                )
-              : AppShell(
-                  workspace: _workspace!,
-                  registry: widget.registry,
-                  settings: widget.settings,
-                  onLock: _lock,
-                ),
-        ),
-      );
+    listenable: widget.settings,
+    builder: (context, _) => MaterialApp(
+      title: 'Marsa',
+      debugShowCheckedModeBanner: false,
+      navigatorKey: navigatorKey,
+      theme: buildTheme(Brightness.light),
+      darkTheme: buildTheme(Brightness.dark),
+      themeMode: widget.settings.themeMode,
+      home: _workspace == null
+          ? UnlockPage(
+              registry: widget.registry,
+              autoUnlock: _launch,
+              onUnlocked: (vault) => setState(
+                () => _workspace = Workspace(vault, DialogPrompter()),
+              ),
+            )
+          : AppShell(
+              workspace: _workspace!,
+              registry: widget.registry,
+              settings: widget.settings,
+              onLock: _lock,
+            ),
+    ),
+  );
 }

@@ -26,11 +26,11 @@ String fingerprintOf(String publicLine) {
 }
 
 SshKey _record(String label, SSHKeyPair kp) => SshKey(
-      label: label,
-      privateKey: kp.toPem(),
-      publicKey: _publicLine(kp, label),
-      type: kp.name,
-    );
+  label: label,
+  privateKey: kp.toPem(),
+  publicKey: _publicLine(kp, label),
+  type: kp.name,
+);
 
 SshKey generateEd25519(String label) {
   final sk = nacl.SigningKey.generate();
@@ -49,10 +49,12 @@ Future<SshKey> generateRsa(String label, {int bits = 3072}) async {
   final pem = await Isolate.run(() {
     final random = FortunaRandom()..seed(KeyParameter(randomBytes(32)));
     final gen = RSAKeyGenerator()
-      ..init(ParametersWithRandom(
-        RSAKeyGeneratorParameters(BigInt.from(65537), bits, 64),
-        random,
-      ));
+      ..init(
+        ParametersWithRandom(
+          RSAKeyGeneratorParameters(BigInt.from(65537), bits, 64),
+          random,
+        ),
+      );
     final priv = gen.generateKeyPair().privateKey;
     return OpenSSHRsaKeyPair(
       priv.n!,

@@ -26,15 +26,15 @@ class SyncConfig {
   });
 
   factory SyncConfig.fromJson(Map<String, dynamic> j) => SyncConfig(
-        type: j['type'] as String,
-        path: j['path'] as String,
-        host: j['host'] as String? ?? '',
-        port: j['port'] as int? ?? 22,
-        username: j['username'] as String? ?? '',
-        password: j['password'] as String? ?? '',
-        privateKey: j['privateKey'] as String? ?? '',
-        fingerprint: j['fingerprint'] as String? ?? '',
-      );
+    type: j['type'] as String,
+    path: j['path'] as String,
+    host: j['host'] as String? ?? '',
+    port: j['port'] as int? ?? 22,
+    username: j['username'] as String? ?? '',
+    password: j['password'] as String? ?? '',
+    privateKey: j['privateKey'] as String? ?? '',
+    fingerprint: j['fingerprint'] as String? ?? '',
+  );
 
   static const folder = 'folder';
   static const sftp = 'sftp';
@@ -57,15 +57,15 @@ class SyncConfig {
       type == folder ? path : 'sftp://$username@$host:$port/$path';
 
   Map<String, dynamic> toJson() => {
-        'type': type,
-        'path': path,
-        'host': host,
-        'port': port,
-        'username': username,
-        'password': password,
-        'privateKey': privateKey,
-        'fingerprint': fingerprint,
-      };
+    'type': type,
+    'path': path,
+    'host': host,
+    'port': port,
+    'username': username,
+    'password': password,
+    'privateKey': privateKey,
+    'fingerprint': fingerprint,
+  };
 }
 
 abstract class SyncIo {
@@ -86,8 +86,11 @@ Future<T> withSyncTarget<T>(
 
   final SSHSocket socket;
   try {
-    socket = await SSHSocket.connect(cfg.host, cfg.port,
-        timeout: const Duration(seconds: 15));
+    socket = await SSHSocket.connect(
+      cfg.host,
+      cfg.port,
+      timeout: const Duration(seconds: 15),
+    );
   } on Exception catch (e) {
     throw SyncError('Cannot reach ${cfg.host}:${cfg.port} ($e)');
   }
@@ -118,8 +121,9 @@ Future<T> withSyncTarget<T>(
     } catch (e) {
       if (mismatch != null) {
         throw SyncError(
-            'The sync server\'s host key changed (now $mismatch). Sync is '
-            'stopped; set the sync target up again if this is expected.');
+          'The sync server\'s host key changed (now $mismatch). Sync is '
+          'stopped; set the sync target up again if this is expected.',
+        );
       }
       if (e is SSHAuthError) {
         throw SyncError('The sync server rejected the login');
@@ -187,10 +191,13 @@ class _SftpIo implements SyncIo {
       }
     }
     final tmp = '$path.tmp';
-    final f = await sftp.open(tmp,
-        mode: SftpFileOpenMode.create |
-            SftpFileOpenMode.write |
-            SftpFileOpenMode.truncate);
+    final f = await sftp.open(
+      tmp,
+      mode:
+          SftpFileOpenMode.create |
+          SftpFileOpenMode.write |
+          SftpFileOpenMode.truncate,
+    );
     try {
       await f.writeBytes(Uint8List.fromList(utf8.encode(content)));
     } finally {

@@ -1,7 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
-import 'dart:typed_data';
 
 import 'package:flutter/foundation.dart';
 
@@ -10,10 +9,26 @@ import 'models.dart';
 import 'sync.dart';
 
 class VaultInfo {
-  VaultInfo(this.id, this.name);
+  VaultInfo(this.id, this.name, {this.remembered = false});
   final String id;
   String name;
-  Map<String, dynamic> toJson() => {'id': id, 'name': name};
+
+  /// This device keeps the vault's key in the OS credential store, so it
+  /// opens without the master password.
+  bool remembered;
+  Map<String, dynamic> toJson() => {
+    'id': id,
+    'name': name,
+    'remembered': remembered,
+  };
+}
+
+/// The operating system's credential store (Keychain, Credential Manager),
+/// holding vault keys for vaults the user chose to remember on this device.
+abstract class KeyStore {
+  Future<Uint8List?> read(String vaultId);
+  Future<void> write(String vaultId, Uint8List key);
+  Future<void> delete(String vaultId);
 }
 
 /// The remote copy is encrypted with a different master password than the
@@ -26,10 +41,14 @@ class RemotePasswordChanged implements Exception {
 /// The list of vaults on this device. Names and ids are not secret; everything
 /// else lives in each vault's encrypted file.
 class VaultRegistry extends ChangeNotifier {
-  VaultRegistry(this.dir);
+  VaultRegistry(this.dir, {this.keyStore});
 
   final Directory dir;
+  final KeyStore? keyStore;
   final List<VaultInfo> vaults = [];
+
+  /// The vault opened most recently, which is the one to reopen on launch.
+  String? lastId;
 
   File get _index => File('${dir.path}/vaults.json');
   File fileOf(String id) => File('${dir.path}/$id.vault');
@@ -38,31 +57,36 @@ class VaultRegistry extends ChangeNotifier {
     await dir.create(recursive: true);
     vaults.clear();
     if (await _index.exists()) {
-      for (final v in jsonDecode(await _index.readAsString()) as List) {
-        vaults.add(VaultInfo(v['id'] as String, v['name'] as String));
+      final j = jsonDecode(await _index.readAsString());
+      // The first releases stored a bare list of vaults.
+      lastId = j is Map ? j['last'] as String? : null;
+      for (final v in (j is Map ? j['vaults'] : j) as List) {
+        vaults.add(
+          VaultInfo(
+            v['id'] as String,
+            v['name'] as String,
+            remembered: v['remembered'] as bool? ?? false,
+          ),
+        );
       }
     }
     notifyListeners();
   }
 
   Future<void> _save() async {
-    await _index.writeAsString(jsonEncode(vaults));
+    await _index.writeAsString(jsonEncode({'last': lastId, 'vaults': vaults}));
     notifyListeners();
   }
 
-  Future<VaultSession> create(String name, String password) async {
-    final kdf = KdfParams.fresh();
-    final s = VaultSession._(this, VaultInfo(newId(), name), kdf,
-        await deriveKey(password, kdf), VaultData(), null);
-    await s._saveLocal();
-    vaults.add(s.info);
-    await _save();
+  Future<VaultSession> _opened(VaultSession s) async {
+    if (lastId != s.info.id) {
+      lastId = s.info.id;
+      await _save();
+    }
     return s;
   }
 
-  Future<VaultSession> unlock(VaultInfo info, String password) async {
-    final env = Envelope.parse(await fileOf(info.id).readAsString());
-    final key = await deriveKey(password, env.kdf);
+  VaultSession _open(VaultInfo info, Envelope env, Uint8List key) {
     final body = open(key, env) as Map<String, dynamic>;
     final sync = body['sync'] as Map<String, dynamic>?;
     return VaultSession._(
@@ -75,9 +99,75 @@ class VaultRegistry extends ChangeNotifier {
     );
   }
 
+  /// Opens a remembered vault with the key from the OS credential store.
+  /// Returns null when that is not possible (nothing stored, the store is
+  /// unavailable, or the master password has changed since); the vault then
+  /// goes back to asking for the password.
+  Future<VaultSession?> unlockRemembered(VaultInfo info) async {
+    if (!info.remembered || keyStore == null) return null;
+    final env = Envelope.parse(await fileOf(info.id).readAsString());
+    try {
+      final key = await keyStore!.read(info.id);
+      if (key != null) return await _opened(_open(info, env, key));
+    } on WrongPassword {
+      // Stale key: fall through and forget it.
+    } catch (_) {
+      // The store could not be read right now; keep the setting and ask for
+      // the password this time.
+      return null;
+    }
+    await forget(info);
+    return null;
+  }
+
+  /// Stores the open vault's key in the OS credential store.
+  Future<void> remember(VaultSession s) async {
+    if (keyStore == null) {
+      throw StateError('No credential store is available on this device');
+    }
+    await keyStore!.write(s.info.id, s._key);
+    s.info.remembered = true;
+    await _save();
+  }
+
+  Future<void> forget(VaultInfo info) async {
+    info.remembered = false;
+    await _save();
+    try {
+      await keyStore?.delete(info.id);
+    } catch (_) {
+      // Nothing more to do: the flag is off, so the key is never used again.
+    }
+  }
+
+  Future<VaultSession> create(String name, String password) async {
+    final kdf = KdfParams.fresh();
+    final s = VaultSession._(
+      this,
+      VaultInfo(newId(), name),
+      kdf,
+      await deriveKey(password, kdf),
+      VaultData(),
+      null,
+    );
+    await s._saveLocal();
+    vaults.add(s.info);
+    lastId = s.info.id;
+    await _save();
+    return s;
+  }
+
+  Future<VaultSession> unlock(VaultInfo info, String password) async {
+    final env = Envelope.parse(await fileOf(info.id).readAsString());
+    return _opened(_open(info, env, await deriveKey(password, env.kdf)));
+  }
+
   /// Adds a vault that already exists at a sync target to this device.
   Future<VaultSession> join(
-      String name, String password, SyncConfig cfg) async {
+    String name,
+    String password,
+    SyncConfig cfg,
+  ) async {
     final text = await withSyncTarget(cfg, (io) => io.read());
     if (text == null) {
       throw SyncError('No vault file found at ${cfg.summary}');
@@ -89,10 +179,17 @@ class VaultRegistry extends ChangeNotifier {
     if (vaults.any((v) => v.id == id)) {
       throw SyncError('This vault is already on this device');
     }
-    final s = VaultSession._(this, VaultInfo(id, name), env.kdf, key,
-        VaultData()..load(body['data'] as Map<String, dynamic>), cfg);
+    final s = VaultSession._(
+      this,
+      VaultInfo(id, name),
+      env.kdf,
+      key,
+      VaultData()..load(body['data'] as Map<String, dynamic>),
+      cfg,
+    );
     await s._saveLocal();
     vaults.add(s.info);
+    lastId = s.info.id;
     await _save();
     return s;
   }
@@ -104,7 +201,9 @@ class VaultRegistry extends ChangeNotifier {
 
   /// Removes the vault from this device only; a synced copy is left alone.
   Future<void> remove(VaultInfo info) async {
+    await forget(info);
     vaults.removeWhere((v) => v.id == info.id);
+    if (lastId == info.id) lastId = null;
     final f = fileOf(info.id);
     if (await f.exists()) await f.delete();
     await _save();
@@ -116,7 +215,13 @@ enum SyncState { off, idle, syncing, error, passwordChanged }
 /// An unlocked vault.
 class VaultSession extends ChangeNotifier {
   VaultSession._(
-      this._registry, this.info, this._kdf, this._key, this.data, this._sync) {
+    this._registry,
+    this.info,
+    this._kdf,
+    this._key,
+    this.data,
+    this._sync,
+  ) {
     if (_sync != null) {
       syncState = SyncState.idle;
       _startTimer();
@@ -252,6 +357,7 @@ class VaultSession extends ChangeNotifier {
     _kdf = kdf;
     _key = key;
     await _saveLocal();
+    await _rekeyed();
     if (_sync != null) {
       await withSyncTarget(_sync!, (io) => io.write(_remoteBody()));
     }
@@ -268,8 +374,20 @@ class VaultSession extends ChangeNotifier {
     _key = key;
     data.merge(remote);
     await _saveLocal();
+    await _rekeyed();
     notifyListeners();
     await syncNow();
+  }
+
+  // A remembered vault must follow the key, or the next launch would find a
+  // stored key that no longer opens the file.
+  Future<void> _rekeyed() async {
+    if (!info.remembered) return;
+    try {
+      await _registry.keyStore!.write(info.id, _key);
+    } catch (_) {
+      await _registry.forget(info);
+    }
   }
 
   /// Forgets the key. Wait for pending writes first so nothing is lost.

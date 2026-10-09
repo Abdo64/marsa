@@ -1,6 +1,5 @@
 import 'dart:async';
 import 'dart:convert';
-import 'dart:typed_data';
 
 import 'package:dartssh2/dartssh2.dart';
 import 'package:flutter/foundation.dart';
@@ -9,6 +8,7 @@ import 'package:xterm/xterm.dart';
 import '../core/models.dart';
 import '../core/vault.dart';
 import 'connector.dart';
+import 'device_keys.dart';
 import 'files.dart';
 import 'forwarding.dart';
 
@@ -61,7 +61,9 @@ class TerminalTab extends AppTab {
       final conn = _conn = await connect(_vault, host, _ui);
       final shell = _shell = await conn.client.shell(
         pty: SSHPtyConfig(
-            width: terminal.viewWidth, height: terminal.viewHeight),
+          width: terminal.viewWidth,
+          height: terminal.viewHeight,
+        ),
       );
       if (_disposed) return close();
       // Clear the "Connecting…" line so the remote banner starts clean.
@@ -70,12 +72,14 @@ class TerminalTab extends AppTab {
       const decoder = Utf8Decoder(allowMalformed: true);
       shell.stdout.cast<List<int>>().transform(decoder).listen(terminal.write);
       shell.stderr.cast<List<int>>().transform(decoder).listen(terminal.write);
-      unawaited(shell.done.catchError((_) {}).whenComplete(() {
-        if (_shell != shell) return;
-        close();
-        terminal.write('\r\n\x1b[2m[session closed]\x1b[0m\r\n');
-        _set(TabState.closed);
-      }));
+      unawaited(
+        shell.done.catchError((_) {}).whenComplete(() {
+          if (_shell != shell) return;
+          close();
+          terminal.write('\r\n\x1b[2m[session closed]\x1b[0m\r\n');
+          _set(TabState.closed);
+        }),
+      );
     } catch (e) {
       close();
       terminal.write('\x1b[31m$e\x1b[0m\r\n');
@@ -112,11 +116,13 @@ class SftpTab extends AppTab {
       remote = RemoteFiles(await conn.client.sftp(), host.title);
       if (_disposed) return close();
       _set(TabState.connected);
-      unawaited(conn.client.done.catchError((_) {}).whenComplete(() {
-        if (_conn != conn) return;
-        close();
-        _set(TabState.closed, 'Connection closed');
-      }));
+      unawaited(
+        conn.client.done.catchError((_) {}).whenComplete(() {
+          if (_conn != conn) return;
+          close();
+          _set(TabState.closed, 'Connection closed');
+        }),
+      );
     } catch (e) {
       close();
       _set(TabState.closed, e.toString());
@@ -185,6 +191,7 @@ class Workspace extends ChangeNotifier {
     }
     tabs.clear();
     await forwards.stopAll();
+    DeviceKeys.lock();
     await vault.lock();
   }
 }

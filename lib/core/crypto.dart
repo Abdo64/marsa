@@ -69,26 +69,28 @@ class KdfParams {
   final int lanes;
 
   Map<String, dynamic> toJson() => {
-        'alg': 'argon2id',
-        'm': memoryKib,
-        't': iterations,
-        'p': lanes,
-        'salt': base64.encode(salt),
-      };
+    'alg': 'argon2id',
+    'm': memoryKib,
+    't': iterations,
+    'p': lanes,
+    'salt': base64.encode(salt),
+  };
 
   bool sameAs(KdfParams o) => jsonEncode(toJson()) == jsonEncode(o.toJson());
 }
 
 Uint8List deriveKeySync(String password, KdfParams p) {
   final gen = Argon2BytesGenerator()
-    ..init(Argon2Parameters(
-      Argon2Parameters.ARGON2_id,
-      p.salt,
-      desiredKeyLength: 32,
-      iterations: p.iterations,
-      memory: p.memoryKib,
-      lanes: p.lanes,
-    ));
+    ..init(
+      Argon2Parameters(
+        Argon2Parameters.ARGON2_id,
+        p.salt,
+        desiredKeyLength: 32,
+        iterations: p.iterations,
+        memory: p.memoryKib,
+        lanes: p.lanes,
+      ),
+    );
   return gen.process(Uint8List.fromList(utf8.encode(password)));
 }
 
@@ -129,18 +131,23 @@ class Envelope {
   final Uint8List ciphertext;
 
   String encode() => jsonEncode({
-        'marsa': 1,
-        'kdf': kdf.toJson(),
-        'nonce': base64.encode(nonce),
-        'ct': base64.encode(ciphertext),
-      });
+    'marsa': 1,
+    'kdf': kdf.toJson(),
+    'nonce': base64.encode(nonce),
+    'ct': base64.encode(ciphertext),
+  });
 }
 
 // The header is authenticated so the KDF parameters cannot be swapped.
 Uint8List _aad(KdfParams kdf) =>
     Uint8List.fromList(utf8.encode('marsa1${jsonEncode(kdf.toJson())}'));
 
-GCMBlockCipher _gcm(bool encrypt, Uint8List key, Uint8List nonce, KdfParams k) =>
+GCMBlockCipher _gcm(
+  bool encrypt,
+  Uint8List key,
+  Uint8List nonce,
+  KdfParams k,
+) =>
     GCMBlockCipher(AESEngine())
       ..init(encrypt, AEADParameters(KeyParameter(key), 128, nonce, _aad(k)));
 
