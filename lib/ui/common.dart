@@ -89,12 +89,14 @@ Future<List<String>?> promptFields(
               for (var i = 0; i < labels.length; i++)
                 Padding(
                   padding: const EdgeInsets.only(bottom: 10),
-                  child: TextField(
-                    controller: ctrls[i],
-                    autofocus: i == 0,
-                    obscureText: obscure?[i] ?? false,
-                    decoration: InputDecoration(labelText: labels[i]),
-                    onSubmitted: (_) => submit(),
+                  child: labeled(
+                    labels[i],
+                    TextField(
+                      controller: ctrls[i],
+                      autofocus: i == 0,
+                      obscureText: obscure?[i] ?? false,
+                      onSubmitted: (_) => submit(),
+                    ),
                   ),
                 ),
             ],
@@ -145,7 +147,7 @@ class PageHeader extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => Padding(
-    padding: const EdgeInsets.fromLTRB(20, 16, 20, 12),
+    padding: const EdgeInsets.fromLTRB(24, 18, 24, 14),
     child: Wrap(
       alignment: WrapAlignment.spaceBetween,
       crossAxisAlignment: WrapCrossAlignment.center,
@@ -153,17 +155,23 @@ class PageHeader extends StatelessWidget {
       runSpacing: 10,
       children: [
         Text(title, style: Theme.of(context).textTheme.titleLarge),
-        Wrap(spacing: 8, runSpacing: 8, children: actions),
+        Wrap(
+          spacing: 8,
+          runSpacing: 8,
+          crossAxisAlignment: WrapCrossAlignment.center,
+          children: actions,
+        ),
       ],
     ),
   );
 }
 
 class EmptyState extends StatelessWidget {
-  const EmptyState(this.icon, this.title, this.hint, {super.key});
+  const EmptyState(this.icon, this.title, this.hint, {super.key, this.action});
   final IconData icon;
   final String title;
   final String hint;
+  final Widget? action;
 
   @override
   Widget build(BuildContext context) {
@@ -171,21 +179,31 @@ class EmptyState extends StatelessWidget {
     return Center(
       child: Padding(
         padding: const EdgeInsets.all(32),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(icon, size: 44, color: t.colorScheme.outline),
-            const SizedBox(height: 12),
-            Text(title, style: t.textTheme.titleMedium),
-            const SizedBox(height: 6),
-            Text(
-              hint,
-              textAlign: TextAlign.center,
-              style: t.textTheme.bodyMedium?.copyWith(
-                color: t.colorScheme.onSurfaceVariant,
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 380),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(
+                width: 56,
+                height: 56,
+                decoration: BoxDecoration(
+                  color: t.colorScheme.surfaceContainer,
+                  borderRadius: BorderRadius.circular(14),
+                ),
+                child: Icon(icon, size: 26, color: t.colorScheme.primary),
               ),
-            ),
-          ],
+              const SizedBox(height: 16),
+              Text(title, style: t.textTheme.titleMedium),
+              const SizedBox(height: 6),
+              Text(
+                hint,
+                textAlign: TextAlign.center,
+                style: t.textTheme.bodySmall?.copyWith(fontSize: 13),
+              ),
+              if (action != null) ...[const SizedBox(height: 16), action!],
+            ],
+          ),
         ),
       ),
     );
@@ -209,15 +227,18 @@ class FormDialog extends StatelessWidget {
   @override
   Widget build(BuildContext context) => AlertDialog(
     title: Text(title),
+    titlePadding: const EdgeInsets.fromLTRB(22, 20, 22, 4),
+    contentPadding: const EdgeInsets.fromLTRB(22, 12, 22, 4),
+    actionsPadding: const EdgeInsets.fromLTRB(22, 8, 22, 18),
     content: SizedBox(
-      width: 460,
+      width: 440,
       child: SingleChildScrollView(
         child: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
             for (final w in children)
-              Padding(padding: const EdgeInsets.only(bottom: 12), child: w),
+              Padding(padding: const EdgeInsets.only(bottom: 14), child: w),
           ],
         ),
       ),
@@ -232,43 +253,69 @@ class FormDialog extends StatelessWidget {
   );
 }
 
-TextField field(
+/// A form control with its label above it.
+Widget labeled(String label, Widget child) => Builder(
+  builder: (context) => Column(
+    mainAxisSize: MainAxisSize.min,
+    crossAxisAlignment: CrossAxisAlignment.start,
+    children: [
+      Padding(
+        padding: const EdgeInsets.only(left: 2, bottom: 5),
+        child: Text(
+          label,
+          style: Theme.of(context).textTheme.labelMedium?.copyWith(
+            color: Theme.of(context).colorScheme.onSurfaceVariant,
+          ),
+        ),
+      ),
+      child,
+    ],
+  ),
+);
+
+Widget field(
   TextEditingController c,
   String label, {
   bool obscure = false,
   String? hint,
   int lines = 1,
   bool code = false,
-}) => TextField(
-  controller: c,
-  obscureText: obscure,
-  maxLines: lines,
-  style: code ? mono.copyWith(fontSize: 13) : null,
-  decoration: InputDecoration(
-    labelText: label,
-    hintText: hint,
-    alignLabelWithHint: true,
+}) => labeled(
+  label,
+  TextField(
+    controller: c,
+    obscureText: obscure,
+    maxLines: lines,
+    style: code ? mono.copyWith(fontSize: 12.5) : null,
+    decoration: InputDecoration(hintText: hint),
   ),
 );
 
-/// A dropdown with an explicit "none" entry.
+/// A labelled dropdown.
 Widget choice<T>(
   String label,
   T? value,
   Map<T?, String> options,
   ValueChanged<T?> onChanged,
-) => DropdownButtonFormField<T?>(
-  initialValue: options.containsKey(value) ? value : null,
-  isExpanded: true,
-  decoration: InputDecoration(labelText: label),
-  items: [
-    for (final e in options.entries)
-      DropdownMenuItem(
-        value: e.key,
-        child: Text(e.value, overflow: TextOverflow.ellipsis),
-      ),
-  ],
-  onChanged: onChanged,
+) => labeled(
+  label,
+  Builder(
+    builder: (context) => DropdownButtonFormField<T?>(
+      style: Theme.of(context).textTheme.bodyLarge,
+      initialValue: options.containsKey(value) ? value : null,
+      isExpanded: true,
+      icon: const Icon(Icons.unfold_more, size: 16),
+      borderRadius: BorderRadius.circular(10),
+      items: [
+        for (final e in options.entries)
+          DropdownMenuItem(
+            value: e.key,
+            child: Text(e.value, overflow: TextOverflow.ellipsis),
+          ),
+      ],
+      onChanged: onChanged,
+    ),
+  ),
 );
 
 /// Answers connection prompts with dialogs on the root navigator.

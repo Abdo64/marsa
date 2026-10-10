@@ -112,9 +112,33 @@ class _HostsPageState extends State<HostsPage> {
     );
   }
 
+  static final _adHoc = RegExp(r'^([^@\s]+)@([^\s:@]+)(?::(\d{1,5}))?$');
+
+  /// A typed `user@host[:port]` that is not saved: connect to it directly.
+  Host? get _quickTarget {
+    final m = _adHoc.firstMatch(_query.trim());
+    if (m == null) return null;
+    return Host(
+      address: m[2]!,
+      port: int.tryParse(m[3] ?? '') ?? 22,
+      username: m[1]!,
+      useDeviceKeys: DeviceKeys.available,
+    );
+  }
+
+  void _submitSearch(List<Host> shown) {
+    final quick = _quickTarget;
+    if (quick != null) {
+      widget.ws.openTerminal(quick);
+    } else if (shown.length == 1) {
+      widget.ws.openTerminal(shown.single);
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
-    final q = _query.toLowerCase();
+    final t = Theme.of(context);
+    final q = _query.trim().toLowerCase();
     final hosts =
         _data.hosts.all
             .where(
@@ -132,14 +156,16 @@ class _HostsPageState extends State<HostsPage> {
     for (final h in hosts) {
       groups.putIfAbsent(h.group, () => []).add(h);
     }
+    // Named groups first, alphabetically; ungrouped hosts last.
     final names = groups.keys.toList()
       ..sort(
         (a, b) => a.isEmpty
-            ? -1
-            : b.isEmpty
             ? 1
+            : b.isEmpty
+            ? -1
             : a.toLowerCase().compareTo(b.toLowerCase()),
       );
+    final quick = _quickTarget;
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -148,57 +174,106 @@ class _HostsPageState extends State<HostsPage> {
           'Hosts',
           actions: [
             SizedBox(
-              width: 220,
+              width: 300,
               child: TextField(
                 decoration: const InputDecoration(
-                  hintText: 'Search',
-                  prefixIcon: Icon(Icons.search, size: 18),
+                  hintText: 'Search, or type user@host to connect',
+                  prefixIcon: Icon(Icons.search, size: 17),
+                  prefixIconConstraints: BoxConstraints(minWidth: 36),
                 ),
                 onChanged: (v) => setState(() => _query = v),
+                onSubmitted: (_) => _submitSearch(hosts),
               ),
             ),
-            OutlinedButton.icon(
-              onPressed: _importSshConfig,
-              icon: const Icon(Icons.file_download_outlined, size: 18),
-              label: const Text('Import ~/.ssh/config'),
+            PopupMenuButton<VoidCallback>(
+              tooltip: 'More',
+              icon: const Icon(Icons.more_horiz, size: 18),
+              onSelected: (f) => f(),
+              itemBuilder: (_) => [
+                PopupMenuItem(
+                  value: _importSshConfig,
+                  child: const Text('Import from ~/.ssh/config'),
+                ),
+              ],
             ),
             FilledButton.icon(
               onPressed: _edit,
-              icon: const Icon(Icons.add, size: 18),
+              icon: const Icon(Icons.add, size: 17),
               label: const Text('New host'),
             ),
           ],
         ),
+        if (quick != null)
+          Padding(
+            padding: const EdgeInsets.fromLTRB(24, 0, 24, 12),
+            child: Card(
+              clipBehavior: Clip.antiAlias,
+              child: ListTile(
+                leading: Icon(Icons.bolt, color: t.colorScheme.primary),
+                title: Text('Connect to ${_query.trim()}'),
+                subtitle: const Text(
+                  'Quick connect without saving. Press Enter.',
+                ),
+                trailing: const Icon(Icons.keyboard_return, size: 16),
+                onTap: () => widget.ws.openTerminal(quick),
+              ),
+            ),
+          ),
         Expanded(
           child: hosts.isEmpty
-              ? EmptyState(
-                  Icons.dns_outlined,
-                  _query.isEmpty ? 'No hosts yet' : 'Nothing matches',
-                  _query.isEmpty
-                      ? 'Add a server to connect to it over SSH or browse it '
-                            'over SFTP.'
-                      : 'Try a different search.',
-                )
+              ? (quick != null
+                    ? const SizedBox.shrink()
+                    : EmptyState(
+                        Icons.dns_outlined,
+                        _query.isEmpty ? 'No hosts yet' : 'Nothing matches',
+                        _query.isEmpty
+                            ? 'Add a server to open a terminal on it or '
+                                  'browse its files over SFTP.'
+                            : 'Try a different search.',
+                        action: _query.isEmpty
+                            ? FilledButton.icon(
+                                onPressed: _edit,
+                                icon: const Icon(Icons.add, size: 17),
+                                label: const Text('New host'),
+                              )
+                            : null,
+                      ))
               : CustomScrollView(
                   slivers: [
                     for (final g in names) ...[
-                      if (g.isNotEmpty || names.length > 1)
-                        SliverToBoxAdapter(
-                          child: Padding(
-                            padding: const EdgeInsets.fromLTRB(20, 10, 20, 8),
-                            child: Text(
-                              g.isEmpty ? 'Ungrouped' : g,
-                              style: Theme.of(context).textTheme.titleSmall,
-                            ),
+                      SliverToBoxAdapter(
+                        child: Padding(
+                          padding: const EdgeInsets.fromLTRB(26, 6, 24, 8),
+                          child: Row(
+                            children: [
+                              Text(
+                                (g.isEmpty
+                                        ? (names.length > 1
+                                              ? 'Ungrouped'
+                                              : 'All hosts')
+                                        : g)
+                                    .toUpperCase(),
+                                style: t.textTheme.labelSmall?.copyWith(
+                                  letterSpacing: .6,
+                                  fontWeight: FontWeight.w600,
+                                ),
+                              ),
+                              const SizedBox(width: 8),
+                              Text(
+                                '${groups[g]!.length}',
+                                style: t.textTheme.labelSmall,
+                              ),
+                            ],
                           ),
                         ),
+                      ),
                       SliverPadding(
-                        padding: const EdgeInsets.fromLTRB(20, 0, 20, 12),
+                        padding: const EdgeInsets.fromLTRB(24, 0, 24, 18),
                         sliver: SliverGrid.builder(
                           gridDelegate:
                               const SliverGridDelegateWithMaxCrossAxisExtent(
-                                maxCrossAxisExtent: 340,
-                                mainAxisExtent: 84,
+                                maxCrossAxisExtent: 420,
+                                mainAxisExtent: 62,
                                 crossAxisSpacing: 10,
                                 mainAxisSpacing: 10,
                               ),
@@ -227,6 +302,15 @@ class _HostsPageState extends State<HostsPage> {
   }
 }
 
+const _avatarColors = [
+  Color(0xFF14B8A6),
+  Color(0xFF3B82F6),
+  Color(0xFF8B5CF6),
+  Color(0xFFF59E0B),
+  Color(0xFFEC4899),
+  Color(0xFF22C55E),
+];
+
 class _HostCard extends StatelessWidget {
   const _HostCard({
     required this.host,
@@ -244,25 +328,34 @@ class _HostCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final t = Theme.of(context);
     final scheme = t.colorScheme;
+    // Hosts in the same group share a colour, so groups read at a glance.
+    final seed = host.group.isEmpty ? host.title : host.group;
+    final color =
+        _avatarColors[seed.codeUnits.fold(0, (a, b) => a + b) %
+            _avatarColors.length];
     return Card(
       clipBehavior: Clip.antiAlias,
       child: InkWell(
         onTap: onConnect,
         child: Padding(
-          padding: const EdgeInsets.fromLTRB(12, 8, 4, 8),
+          padding: const EdgeInsets.fromLTRB(12, 0, 2, 0),
           child: Row(
             children: [
               Container(
-                width: 36,
-                height: 36,
+                width: 34,
+                height: 34,
+                alignment: Alignment.center,
                 decoration: BoxDecoration(
-                  color: scheme.primaryContainer,
+                  color: color.withValues(alpha: .16),
                   borderRadius: BorderRadius.circular(9),
                 ),
-                child: Icon(
-                  Icons.dns_outlined,
-                  size: 18,
-                  color: scheme.onPrimaryContainer,
+                child: Text(
+                  host.title.characters.first.toUpperCase(),
+                  style: TextStyle(
+                    color: color,
+                    fontWeight: FontWeight.w700,
+                    fontSize: 15,
+                  ),
                 ),
               ),
               const SizedBox(width: 12),
@@ -271,42 +364,58 @@ class _HostCard extends StatelessWidget {
                   mainAxisAlignment: MainAxisAlignment.center,
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(
-                      host.title,
-                      overflow: TextOverflow.ellipsis,
-                      style: t.textTheme.titleSmall,
+                    Row(
+                      children: [
+                        Flexible(
+                          child: Text(
+                            host.title,
+                            overflow: TextOverflow.ellipsis,
+                            style: t.textTheme.titleSmall,
+                          ),
+                        ),
+                        for (final tag in host.tags.take(2))
+                          Container(
+                            margin: const EdgeInsets.only(left: 6),
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 6,
+                              vertical: 1,
+                            ),
+                            decoration: BoxDecoration(
+                              color: scheme.surfaceContainerHigh,
+                              borderRadius: BorderRadius.circular(5),
+                            ),
+                            child: Text(tag, style: t.textTheme.labelSmall),
+                          ),
+                      ],
                     ),
+                    const SizedBox(height: 2),
                     Text(
                       subtitle,
                       overflow: TextOverflow.ellipsis,
                       textDirection: TextDirection.ltr,
-                      style: t.textTheme.bodySmall?.copyWith(
+                      style: mono.copyWith(
+                        fontSize: 11.5,
                         color: scheme.onSurfaceVariant,
                       ),
                     ),
-                    if (host.tags.isNotEmpty)
-                      Text(
-                        host.tags.map((t) => '#$t').join(' '),
-                        overflow: TextOverflow.ellipsis,
-                        style: t.textTheme.labelSmall?.copyWith(
-                          color: scheme.primary,
-                        ),
-                      ),
                   ],
                 ),
               ),
               IconButton(
+                tooltip: 'Open terminal',
+                icon: Icon(Icons.terminal, size: 17, color: scheme.primary),
+                onPressed: onConnect,
+              ),
+              IconButton(
                 tooltip: 'Browse files (SFTP)',
-                icon: const Icon(Icons.folder_copy_outlined, size: 18),
+                icon: const Icon(Icons.folder_copy_outlined, size: 17),
                 onPressed: onSftp,
               ),
               PopupMenuButton<VoidCallback>(
                 tooltip: 'More',
-                icon: const Icon(Icons.more_vert, size: 18),
+                icon: const Icon(Icons.more_vert, size: 17),
                 onSelected: (f) => f(),
                 itemBuilder: (_) => [
-                  PopupMenuItem(value: onConnect, child: const Text('Connect')),
-                  PopupMenuItem(value: onSftp, child: const Text('SFTP')),
                   PopupMenuItem(value: onEdit, child: const Text('Edit')),
                   PopupMenuItem(value: onDelete, child: const Text('Delete')),
                 ],

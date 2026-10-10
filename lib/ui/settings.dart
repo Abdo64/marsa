@@ -100,184 +100,267 @@ class SettingsPage extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final t = Theme.of(context);
-    final muted = t.textTheme.bodySmall?.copyWith(
-      color: t.colorScheme.onSurfaceVariant,
-    );
-    Widget section(String title, List<Widget> children) => Padding(
-      padding: const EdgeInsets.fromLTRB(20, 0, 20, 16),
-      child: Card(
-        child: Padding(
-          padding: const EdgeInsets.all(16),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(title, style: t.textTheme.titleSmall),
-              const SizedBox(height: 12),
-              ...children,
-            ],
+    final scheme = t.colorScheme;
+    final sync = _vault.sync;
+    final syncBad =
+        _vault.syncState == SyncState.error ||
+        _vault.syncState == SyncState.passwordChanged;
+
+    Widget section(String title, List<Widget> rows) => Padding(
+      padding: const EdgeInsets.only(bottom: 22),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Padding(
+            padding: const EdgeInsets.only(left: 2, bottom: 8),
+            child: Text(
+              title.toUpperCase(),
+              style: t.textTheme.labelSmall?.copyWith(
+                letterSpacing: .6,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
           ),
-        ),
+          Card(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                for (var i = 0; i < rows.length; i++) ...[
+                  if (i > 0) const Divider(),
+                  rows[i],
+                ],
+              ],
+            ),
+          ),
+        ],
       ),
     );
 
-    final sync = _vault.sync;
+    // A setting: what it is on the left, its control on the right.
+    Widget row(String title, String? detail, Widget control, {Color? color}) {
+      final label = Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            title,
+            style: t.textTheme.bodyMedium?.copyWith(
+              fontWeight: FontWeight.w500,
+            ),
+          ),
+          if (detail != null)
+            Padding(
+              padding: const EdgeInsets.only(top: 2),
+              child: Text(
+                detail,
+                style: t.textTheme.bodySmall?.copyWith(color: color),
+              ),
+            ),
+        ],
+      );
+      return Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+        child: LayoutBuilder(
+          // Side by side when there is room, stacked on a narrow window.
+          builder: (context, box) => box.maxWidth < 520
+              ? Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [label, const SizedBox(height: 10), control],
+                )
+              : Row(
+                  children: [
+                    Expanded(child: label),
+                    const SizedBox(width: 24),
+                    control,
+                  ],
+                ),
+        ),
+      );
+    }
+
     return ListenableBuilder(
       listenable: settings,
       builder: (context, _) => ListView(
         children: [
           const PageHeader('Settings'),
-          section('Appearance', [
-            SegmentedButton<ThemeMode>(
-              segments: const [
-                ButtonSegment(
-                  value: ThemeMode.system,
-                  icon: Icon(Icons.brightness_auto_outlined),
-                  label: Text('System'),
+          Align(
+            alignment: Alignment.topLeft,
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 820),
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(24, 0, 24, 24),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    section('Appearance', [
+                      row(
+                        'Theme',
+                        null,
+                        SegmentedButton<ThemeMode>(
+                          showSelectedIcon: false,
+                          segments: const [
+                            ButtonSegment(
+                              value: ThemeMode.system,
+                              label: Text('System'),
+                            ),
+                            ButtonSegment(
+                              value: ThemeMode.light,
+                              label: Text('Light'),
+                            ),
+                            ButtonSegment(
+                              value: ThemeMode.dark,
+                              label: Text('Dark'),
+                            ),
+                          ],
+                          selected: {settings.themeMode},
+                          onSelectionChanged: (s) => settings.update(
+                            () => settings.themeMode = s.first,
+                          ),
+                        ),
+                      ),
+                      row(
+                        'Terminal colours',
+                        null,
+                        SizedBox(
+                          width: 240,
+                          child: DropdownButtonFormField<String>(
+                            initialValue: settings.terminalTheme,
+                            isExpanded: true,
+                            icon: const Icon(Icons.unfold_more, size: 16),
+                            style: t.textTheme.bodyLarge,
+                            items: [
+                              const DropdownMenuItem(
+                                value: 'auto',
+                                child: Text('Follow the app theme'),
+                              ),
+                              for (final name in terminalThemes.keys)
+                                DropdownMenuItem(
+                                  value: name,
+                                  child: Text(name),
+                                ),
+                            ],
+                            onChanged: (v) => settings.update(
+                              () => settings.terminalTheme = v!,
+                            ),
+                          ),
+                        ),
+                      ),
+                      row(
+                        'Terminal font size',
+                        '${settings.fontSize.round()} pt',
+                        SizedBox(
+                          width: 240,
+                          child: Slider(
+                            min: 9,
+                            max: 24,
+                            divisions: 15,
+                            value: settings.fontSize,
+                            onChanged: (v) =>
+                                settings.update(() => settings.fontSize = v),
+                          ),
+                        ),
+                      ),
+                    ]),
+                    section('Vault · ${_vault.info.name}', [
+                      row(
+                        'Sync',
+                        switch (_vault.syncState) {
+                          SyncState.off =>
+                            'Off. This vault lives only on this device.',
+                          SyncState.error => 'Failed: ${_vault.syncError}',
+                          SyncState.passwordChanged =>
+                            'The master password was changed on another '
+                                'device. Click the cloud icon in the sidebar '
+                                'to enter the new one.',
+                          _ =>
+                            '${sync?.summary}'
+                                '${_vault.lastSynced == null ? '' : '\nLast synced at ${TimeOfDay.fromDateTime(_vault.lastSynced!).format(context)}'}',
+                        },
+                        Wrap(
+                          spacing: 8,
+                          runSpacing: 8,
+                          children: [
+                            if (sync != null) ...[
+                              if (sync.link != null)
+                                OutlinedButton(
+                                  onPressed: () => copyText(
+                                    context,
+                                    sync.link!,
+                                    'Sync link',
+                                  ),
+                                  child: const Text('Copy link'),
+                                ),
+                              OutlinedButton(
+                                onPressed: () => busy(context, _vault.syncNow),
+                                child: const Text('Sync now'),
+                              ),
+                              OutlinedButton(
+                                onPressed: () => _stopSync(context),
+                                child: const Text('Turn off'),
+                              ),
+                            ],
+                            sync == null
+                                ? FilledButton(
+                                    onPressed: () => _configureSync(context),
+                                    child: const Text('Set up sync'),
+                                  )
+                                : OutlinedButton(
+                                    onPressed: () => _configureSync(context),
+                                    child: const Text('Change'),
+                                  ),
+                          ],
+                        ),
+                        color: syncBad ? scheme.error : null,
+                      ),
+                      row(
+                        'Remember on this device',
+                        'Open without the master password. The key is kept '
+                            'in this computer\'s credential store, so anyone '
+                            'using your signed-in account can open the vault.',
+                        Switch(
+                          value: _vault.info.remembered,
+                          onChanged: (on) => _setRemember(context, on),
+                        ),
+                      ),
+                      row(
+                        'Master password',
+                        sync == null
+                            ? null
+                            : 'Other devices are asked for the new one on '
+                                  'their next sync.',
+                        OutlinedButton(
+                          onPressed: () => _changePassword(context),
+                          child: const Text('Change'),
+                        ),
+                      ),
+                      row(
+                        'Vault name',
+                        _vault.info.name,
+                        OutlinedButton(
+                          onPressed: () => _rename(context),
+                          child: const Text('Rename'),
+                        ),
+                      ),
+                    ]),
+                    section('About', [
+                      row(
+                        'Marsa $appVersion',
+                        'Open-source SSH and SFTP client with encrypted, '
+                            'self-synced vaults. MIT License.',
+                        OutlinedButton(
+                          onPressed: () => showLicensePage(
+                            context: context,
+                            applicationName: 'Marsa',
+                            applicationVersion: appVersion,
+                          ),
+                          child: const Text('Open-source licenses'),
+                        ),
+                      ),
+                    ]),
+                  ],
                 ),
-                ButtonSegment(
-                  value: ThemeMode.light,
-                  icon: Icon(Icons.light_mode_outlined),
-                  label: Text('Light'),
-                ),
-                ButtonSegment(
-                  value: ThemeMode.dark,
-                  icon: Icon(Icons.dark_mode_outlined),
-                  label: Text('Dark'),
-                ),
-              ],
-              selected: {settings.themeMode},
-              onSelectionChanged: (s) =>
-                  settings.update(() => settings.themeMode = s.first),
-            ),
-            const SizedBox(height: 14),
-            SizedBox(
-              width: 320,
-              child: choice<String>(
-                'Terminal colours',
-                settings.terminalTheme,
-                {
-                  'auto': 'Follow the app theme',
-                  for (final name in terminalThemes.keys) name: name,
-                },
-                (v) => settings.update(() => settings.terminalTheme = v!),
               ),
             ),
-            const SizedBox(height: 8),
-            Row(
-              children: [
-                Text('Terminal font size  ${settings.fontSize.round()}'),
-                Expanded(
-                  child: Slider(
-                    min: 9,
-                    max: 24,
-                    divisions: 15,
-                    value: settings.fontSize,
-                    onChanged: (v) =>
-                        settings.update(() => settings.fontSize = v),
-                  ),
-                ),
-              ],
-            ),
-          ]),
-          section('Vault: ${_vault.info.name}', [
-            Text(
-              switch (_vault.syncState) {
-                SyncState.off =>
-                  'This vault lives only on this device. Turn on sync to '
-                      'use it on your other devices or share it with your '
-                      'team.',
-                SyncState.error => 'Sync failed: ${_vault.syncError}',
-                SyncState.passwordChanged =>
-                  'The master password was changed on another device. Use '
-                      'the cloud icon in the sidebar to enter the new one.',
-                _ =>
-                  'Syncing through ${sync?.summary}'
-                      '${_vault.lastSynced == null ? '' : '\nLast synced at ${TimeOfDay.fromDateTime(_vault.lastSynced!).format(context)}'}',
-              },
-              style:
-                  _vault.syncState == SyncState.error ||
-                      _vault.syncState == SyncState.passwordChanged
-                  ? TextStyle(color: t.colorScheme.error)
-                  : muted,
-            ),
-            if (sync?.fingerprint.isNotEmpty ?? false)
-              Padding(
-                padding: const EdgeInsets.only(top: 4),
-                child: Text(
-                  'Sync server key: ${sync!.fingerprint}',
-                  style: muted?.merge(mono),
-                ),
-              ),
-            const SizedBox(height: 12),
-            Wrap(
-              spacing: 8,
-              runSpacing: 8,
-              children: [
-                FilledButton.tonal(
-                  onPressed: () => _configureSync(context),
-                  child: Text(sync == null ? 'Set up sync' : 'Change sync'),
-                ),
-                if (sync != null) ...[
-                  OutlinedButton(
-                    onPressed: () => busy(context, _vault.syncNow),
-                    child: const Text('Sync now'),
-                  ),
-                  OutlinedButton(
-                    onPressed: () => _stopSync(context),
-                    child: const Text('Stop syncing'),
-                  ),
-                ],
-                OutlinedButton(
-                  onPressed: () => _rename(context),
-                  child: const Text('Rename'),
-                ),
-                OutlinedButton(
-                  onPressed: () => _changePassword(context),
-                  child: const Text('Change master password'),
-                ),
-              ],
-            ),
-            const SizedBox(height: 4),
-            SwitchListTile(
-              value: _vault.info.remembered,
-              onChanged: (on) => _setRemember(context, on),
-              contentPadding: EdgeInsets.zero,
-              title: const Text('Remember on this device'),
-              subtitle: Text(
-                'Open this vault without the master password. Its key is '
-                'kept in this computer\'s credential store, so anyone who '
-                'can use your signed-in account can open the vault. Sync and '
-                'other devices are not affected.',
-                style: muted,
-              ),
-            ),
-            const SizedBox(height: 4),
-            Text(
-              'To share a vault with teammates, give them the sync location '
-              'and the master password; they add it with "Join a synced '
-              'vault" on the unlock screen. Keep personal and team servers '
-              'in separate vaults.',
-              style: muted,
-            ),
-          ]),
-          section('About', [
-            Text('Marsa $appVersion', style: t.textTheme.bodyMedium),
-            const SizedBox(height: 4),
-            Text(
-              'Open-source SSH and SFTP client with encrypted, self-synced '
-              'vaults. Released under the MIT License.',
-              style: muted,
-            ),
-            const SizedBox(height: 12),
-            OutlinedButton(
-              onPressed: () => showLicensePage(
-                context: context,
-                applicationName: 'Marsa',
-                applicationVersion: appVersion,
-              ),
-              child: const Text('Open-source licenses'),
-            ),
-          ]),
+          ),
         ],
       ),
     );

@@ -60,7 +60,7 @@ class ForwardsPage extends StatelessWidget {
               : ListenableBuilder(
                   listenable: ws.forwards,
                   builder: (context, _) => ListView(
-                    padding: const EdgeInsets.fromLTRB(20, 0, 20, 20),
+                    padding: const EdgeInsets.fromLTRB(24, 0, 24, 20),
                     children: [
                       for (final r in rules)
                         Padding(
@@ -298,7 +298,7 @@ class SnippetsPage extends StatelessWidget {
                       'terminal from its toolbar.',
                 )
               : ListView(
-                  padding: const EdgeInsets.fromLTRB(20, 0, 20, 20),
+                  padding: const EdgeInsets.fromLTRB(24, 0, 24, 20),
                   children: [
                     for (final s in snippets)
                       Padding(
@@ -363,7 +363,7 @@ class KnownHostsPage extends StatelessWidget {
                       'synced, so a changed key is noticed on every device.',
                 )
               : ListView(
-                  padding: const EdgeInsets.fromLTRB(20, 0, 20, 20),
+                  padding: const EdgeInsets.fromLTRB(24, 0, 24, 20),
                   children: [
                     for (final k in known)
                       Padding(

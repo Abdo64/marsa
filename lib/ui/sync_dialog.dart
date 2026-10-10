@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 
 import '../core/models.dart';
 import '../core/sync.dart';
+import '../ssh/device_keys.dart';
 import 'common.dart';
 
 /// Collects a sync target. With [joining] the target must already hold a
@@ -83,6 +84,23 @@ class _SyncDialogState extends State<_SyncDialog> {
     }
   }
 
+  late bool _deviceKeys = widget.current?.deviceKeys ?? DeviceKeys.available;
+  final _link = TextEditingController();
+
+  void _pasteLink(String text) {
+    final cfg = SyncConfig.fromLink(text);
+    if (cfg == null) return;
+    setState(() {
+      _type = SyncConfig.sftp;
+      _host.text = cfg.host;
+      _port.text = '${cfg.port}';
+      _user.text = cfg.username;
+      _remotePath.text = cfg.path;
+      // Fall back to asking for a password where this device has no keys.
+      _deviceKeys = cfg.deviceKeys && DeviceKeys.available;
+    });
+  }
+
   void _fillFrom(Host? h) {
     if (h == null) return;
     final c = widget.data!.credentialsFor(h);
@@ -92,6 +110,7 @@ class _SyncDialogState extends State<_SyncDialog> {
       _user.text = c.username;
       _password.text = c.password;
       _key.text = c.key?.privateKey ?? '';
+      _deviceKeys = h.useDeviceKeys;
     });
   }
 
@@ -116,8 +135,9 @@ class _SyncDialogState extends State<_SyncDialog> {
         host: _host.text.trim(),
         port: int.tryParse(_port.text) ?? 22,
         username: _user.text.trim(),
-        password: _password.text,
-        privateKey: _key.text,
+        password: _deviceKeys ? '' : _password.text,
+        privateKey: _deviceKeys ? '' : _key.text,
+        deviceKeys: _deviceKeys,
         // Keep the pinned key only while it is still the same server.
         fingerprint: same ? widget.current!.fingerprint : '',
       );
@@ -136,7 +156,20 @@ class _SyncDialogState extends State<_SyncDialog> {
       saveLabel: widget.joining ? 'Continue' : 'Save and sync',
       onSave: _save,
       children: [
+        if (widget.joining)
+          labeled(
+            'Sync link (optional)',
+            TextField(
+              controller: _link,
+              style: mono.copyWith(fontSize: 12.5),
+              decoration: const InputDecoration(
+                hintText: 'Paste a link copied from another device',
+              ),
+              onChanged: _pasteLink,
+            ),
+          ),
         SegmentedButton<String>(
+          showSelectedIcon: false,
           segments: const [
             ButtonSegment(
               value: SyncConfig.sftp,
@@ -188,22 +221,35 @@ class _SyncDialogState extends State<_SyncDialog> {
             ],
           ),
           field(_user, 'Username'),
-          field(_password, 'Password', obscure: true),
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Expanded(
-                child: field(
-                  _key,
-                  'Private key (optional, unencrypted PEM)',
-                  lines: 3,
-                  code: true,
-                ),
-              ),
-              const SizedBox(width: 8),
-              OutlinedButton(onPressed: _loadKey, child: const Text('Load')),
-            ],
+          SwitchListTile(
+            value: _deviceKeys,
+            onChanged: (v) => setState(() => _deviceKeys = v),
+            dense: true,
+            contentPadding: EdgeInsets.zero,
+            title: const Text('Log in with this device\'s SSH keys (~/.ssh)'),
+            subtitle: const Text(
+              'Each device uses its own keys, so every device you sync must '
+              'already be able to ssh into this server.',
+            ),
           ),
+          if (!_deviceKeys)
+            field(_password, 'Server login password', obscure: true),
+          if (!_deviceKeys)
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Expanded(
+                  child: field(
+                    _key,
+                    'Private key (optional, unencrypted PEM)',
+                    lines: 3,
+                    code: true,
+                  ),
+                ),
+                const SizedBox(width: 8),
+                OutlinedButton(onPressed: _loadKey, child: const Text('Load')),
+              ],
+            ),
           field(
             _remotePath,
             'Path of the vault file on the server',

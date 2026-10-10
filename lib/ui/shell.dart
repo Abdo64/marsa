@@ -17,7 +17,6 @@ const _sections = {
   Section.forwards: ('Port forwarding', Icons.swap_horiz),
   Section.snippets: ('Snippets', Icons.code),
   Section.knownHosts: ('Known hosts', Icons.verified_user_outlined),
-  Section.settings: ('Settings', Icons.settings_outlined),
 };
 
 class AppShell extends StatelessWidget {
@@ -78,22 +77,28 @@ class AppShell extends StatelessWidget {
               _Sidebar(ws, compact, () => _lock(context)),
               const VerticalDivider(width: 1),
               Expanded(
-                child: IndexedStack(
-                  index: index,
+                child: Column(
                   children: [
-                    _page(),
-                    for (final tab in ws.tabs)
-                      KeyedSubtree(
-                        key: ObjectKey(tab),
-                        child: tab is TerminalTab
-                            ? TerminalTabView(
-                                ws,
-                                tab,
-                                settings,
-                                visible: tab == ws.active,
-                              )
-                            : SftpTabView(ws, tab as SftpTab),
+                    if (ws.tabs.isNotEmpty) _TabStrip(ws),
+                    Expanded(
+                      child: IndexedStack(
+                        index: index,
+                        children: [
+                          _page(),
+                          for (final tab in ws.tabs)
+                            KeyedSubtree(
+                              key: ObjectKey(tab),
+                              child: tab is TerminalTab
+                                  ? TerminalTabView(
+                                      tab,
+                                      settings,
+                                      visible: tab == ws.active,
+                                    )
+                                  : SftpTabView(ws, tab as SftpTab),
+                            ),
+                        ],
                       ),
+                    ),
                   ],
                 ),
               ),
@@ -105,6 +110,166 @@ class AppShell extends StatelessWidget {
   );
 }
 
+/// Open sessions as tabs across the top, with the active tab's actions on
+/// the right.
+class _TabStrip extends StatelessWidget {
+  const _TabStrip(this.ws);
+  final Workspace ws;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    final active = ws.active;
+    final snippets = ws.vault.data.snippets.all.toList()
+      ..sort((a, b) => a.label.compareTo(b.label));
+    return Container(
+      height: 40,
+      decoration: BoxDecoration(
+        color: Palette.of(context).sidebar,
+        border: Border(bottom: BorderSide(color: scheme.outlineVariant)),
+      ),
+      child: Row(
+        children: [
+          Expanded(
+            child: ListView(
+              scrollDirection: Axis.horizontal,
+              children: [
+                for (final tab in ws.tabs)
+                  ListenableBuilder(
+                    listenable: tab,
+                    builder: (context, _) => _Tab(
+                      tab: tab,
+                      selected: tab == active,
+                      onTap: () => ws.focus(tab),
+                      onClose: () => ws.closeTab(tab),
+                    ),
+                  ),
+              ],
+            ),
+          ),
+          if (active is TerminalTab) ...[
+            PopupMenuButton<String>(
+              tooltip: 'Run a snippet',
+              enabled: snippets.isNotEmpty,
+              icon: const Icon(Icons.code, size: 17),
+              onSelected: (cmd) {
+                active.send('$cmd\r');
+                active.focusNode.requestFocus();
+              },
+              itemBuilder: (_) => [
+                for (final s in snippets)
+                  PopupMenuItem(
+                    value: s.command,
+                    child: Text(
+                      s.label.isEmpty ? s.command : s.label,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ),
+              ],
+            ),
+            IconButton(
+              tooltip: 'Browse this server\'s files (SFTP)',
+              icon: const Icon(Icons.folder_copy_outlined, size: 17),
+              onPressed: () => ws.openSftp(active.host),
+            ),
+          ],
+          if (active is SftpTab)
+            IconButton(
+              tooltip: 'Open a terminal on this server',
+              icon: const Icon(Icons.terminal, size: 17),
+              onPressed: () => ws.openTerminal(active.host),
+            ),
+          const SizedBox(width: 6),
+        ],
+      ),
+    );
+  }
+}
+
+class _Tab extends StatelessWidget {
+  const _Tab({
+    required this.tab,
+    required this.selected,
+    required this.onTap,
+    required this.onClose,
+  });
+  final AppTab tab;
+  final bool selected;
+  final VoidCallback onTap;
+  final VoidCallback onClose;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    final palette = Palette.of(context);
+    final fg = selected ? scheme.onSurface : palette.muted;
+    return InkWell(
+      onTap: onTap,
+      child: Container(
+        constraints: const BoxConstraints(minWidth: 130, maxWidth: 220),
+        padding: const EdgeInsets.only(left: 12, right: 6),
+        decoration: BoxDecoration(
+          color: selected ? scheme.surface : null,
+          border: Border(
+            top: BorderSide(
+              width: 2,
+              color: selected ? scheme.primary : Colors.transparent,
+            ),
+            right: BorderSide(color: scheme.outlineVariant),
+          ),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Container(
+              width: 7,
+              height: 7,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                color: switch (tab.state) {
+                  TabState.connected => palette.success,
+                  TabState.connecting => palette.warning,
+                  TabState.closed => scheme.error,
+                },
+              ),
+            ),
+            const SizedBox(width: 8),
+            Icon(
+              tab is TerminalTab ? Icons.terminal : Icons.folder_copy_outlined,
+              size: 15,
+              color: fg,
+            ),
+            const SizedBox(width: 7),
+            Flexible(
+              child: Text(
+                tab.host.title,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                  fontSize: 12.5,
+                  color: fg,
+                  fontWeight: selected ? FontWeight.w600 : FontWeight.w400,
+                ),
+              ),
+            ),
+            const SizedBox(width: 6),
+            Tooltip(
+              message: 'Close',
+              child: InkWell(
+                onTap: onClose,
+                borderRadius: BorderRadius.circular(5),
+                child: Padding(
+                  padding: const EdgeInsets.all(3),
+                  child: Icon(Icons.close, size: 14, color: fg),
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
 class _Sidebar extends StatelessWidget {
   const _Sidebar(this.ws, this.compact, this.onLock);
   final Workspace ws;
@@ -113,30 +278,62 @@ class _Sidebar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final scheme = Theme.of(context).colorScheme;
+    final t = Theme.of(context);
+    final scheme = t.colorScheme;
+    Widget item(Section s, String label, IconData icon) => _Item(
+      icon: icon,
+      label: label,
+      compact: compact,
+      selected: ws.active == null && ws.section == s,
+      onTap: () => ws.show(s),
+    );
     return Container(
-      width: compact ? 56 : 220,
-      color: scheme.surfaceContainerLowest,
+      width: compact ? 56 : 212,
+      color: Palette.of(context).sidebar,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           Padding(
             padding: EdgeInsets.fromLTRB(
               compact ? 4 : 14,
-              12,
-              compact ? 4 : 6,
-              8,
+              10,
+              compact ? 4 : 4,
+              10,
             ),
             child: Row(
               children: [
                 if (!compact) ...[
-                  Icon(Icons.anchor, size: 20, color: scheme.primary),
-                  const SizedBox(width: 8),
+                  Container(
+                    width: 26,
+                    height: 26,
+                    decoration: BoxDecoration(
+                      color: scheme.primary,
+                      borderRadius: BorderRadius.circular(7),
+                    ),
+                    child: Icon(
+                      Icons.anchor,
+                      size: 16,
+                      color: scheme.onPrimary,
+                    ),
+                  ),
+                  const SizedBox(width: 10),
                   Expanded(
-                    child: Text(
-                      ws.vault.info.name,
-                      overflow: TextOverflow.ellipsis,
-                      style: Theme.of(context).textTheme.titleSmall,
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          ws.vault.info.name,
+                          overflow: TextOverflow.ellipsis,
+                          style: t.textTheme.titleSmall,
+                        ),
+                        Text(switch (ws.vault.syncState) {
+                          SyncState.off => 'This device only',
+                          SyncState.idle => 'Synced',
+                          SyncState.syncing => 'Syncing…',
+                          SyncState.error => 'Sync failed',
+                          SyncState.passwordChanged => 'Password changed',
+                        }, style: t.textTheme.labelSmall),
+                      ],
                     ),
                   ),
                 ],
@@ -146,59 +343,26 @@ class _Sidebar extends StatelessWidget {
           ),
           Expanded(
             child: ListView(
-              padding: const EdgeInsets.symmetric(horizontal: 6),
+              padding: const EdgeInsets.symmetric(horizontal: 8),
               children: [
                 for (final e in _sections.entries)
-                  _Item(
-                    icon: e.value.$2,
-                    label: e.value.$1,
-                    compact: compact,
-                    selected: ws.active == null && ws.section == e.key,
-                    onTap: () => ws.show(e.key),
-                  ),
-                if (ws.tabs.isNotEmpty) ...[
-                  const Divider(height: 17),
-                  if (!compact)
-                    Padding(
-                      padding: const EdgeInsets.fromLTRB(10, 2, 0, 4),
-                      child: Text(
-                        'SESSIONS',
-                        style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                          color: scheme.onSurfaceVariant,
-                        ),
-                      ),
-                    ),
-                  for (final tab in ws.tabs)
-                    ListenableBuilder(
-                      listenable: tab,
-                      builder: (context, _) => _Item(
-                        icon: tab is TerminalTab
-                            ? Icons.terminal
-                            : Icons.folder_copy_outlined,
-                        iconColor: switch (tab.state) {
-                          TabState.connected => Colors.green,
-                          TabState.connecting => Colors.amber,
-                          TabState.closed => scheme.error,
-                        },
-                        label: tab.host.title,
-                        compact: compact,
-                        selected: ws.active == tab,
-                        onTap: () => ws.focus(tab),
-                        onClose: () => ws.closeTab(tab),
-                      ),
-                    ),
-                ],
+                  item(e.key, e.value.$1, e.value.$2),
               ],
             ),
           ),
           Padding(
-            padding: const EdgeInsets.all(6),
-            child: _Item(
-              icon: Icons.lock_outline,
-              label: 'Lock vault',
-              compact: compact,
-              selected: false,
-              onTap: onLock,
+            padding: const EdgeInsets.all(8),
+            child: Column(
+              children: [
+                item(Section.settings, 'Settings', Icons.settings_outlined),
+                _Item(
+                  icon: Icons.lock_outline,
+                  label: 'Lock vault',
+                  compact: compact,
+                  selected: false,
+                  onTap: onLock,
+                ),
+              ],
             ),
           ),
         ],
@@ -214,33 +378,27 @@ class _Item extends StatelessWidget {
     required this.compact,
     required this.selected,
     required this.onTap,
-    this.iconColor,
-    this.onClose,
   });
   final IconData icon;
   final String label;
   final bool compact;
   final bool selected;
   final VoidCallback onTap;
-  final Color? iconColor;
-  final VoidCallback? onClose;
 
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
-    final fg = selected ? scheme.onPrimaryContainer : scheme.onSurfaceVariant;
+    final fg = selected ? scheme.onSurface : Palette.of(context).muted;
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 1),
       child: Tooltip(
         message: compact ? label : '',
         child: Material(
-          color: selected ? scheme.primaryContainer : Colors.transparent,
-          borderRadius: BorderRadius.circular(8),
+          color: selected ? scheme.surfaceContainerHigh : Colors.transparent,
+          borderRadius: BorderRadius.circular(7),
           child: InkWell(
-            borderRadius: BorderRadius.circular(8),
+            borderRadius: BorderRadius.circular(7),
             onTap: onTap,
-            // The compact rail has no room for a close button.
-            onLongPress: compact ? onClose : null,
             child: Padding(
               padding: EdgeInsets.symmetric(
                 horizontal: compact ? 0 : 10,
@@ -251,22 +409,22 @@ class _Item extends StatelessWidget {
                     ? MainAxisAlignment.center
                     : MainAxisAlignment.start,
                 children: [
-                  Icon(icon, size: 18, color: iconColor ?? fg),
+                  Icon(icon, size: 17, color: selected ? scheme.primary : fg),
                   if (!compact) ...[
                     const SizedBox(width: 10),
                     Expanded(
                       child: Text(
                         label,
                         overflow: TextOverflow.ellipsis,
-                        style: TextStyle(color: fg, fontSize: 13),
+                        style: TextStyle(
+                          color: fg,
+                          fontSize: 13,
+                          fontWeight: selected
+                              ? FontWeight.w600
+                              : FontWeight.w400,
+                        ),
                       ),
                     ),
-                    if (onClose != null)
-                      InkWell(
-                        onTap: onClose,
-                        borderRadius: BorderRadius.circular(10),
-                        child: Icon(Icons.close, size: 15, color: fg),
-                      ),
                   ],
                 ],
               ),
@@ -330,7 +488,7 @@ class _SyncButton extends StatelessWidget {
     };
     return IconButton(
       tooltip: tip,
-      icon: Icon(icon, size: 18, color: color),
+      icon: Icon(icon, size: 17, color: color),
       onPressed: vault.syncState == SyncState.syncing
           ? null
           : () => _tap(context),

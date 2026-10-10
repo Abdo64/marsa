@@ -75,7 +75,7 @@ class SftpTabView extends StatefulWidget {
 }
 
 class _SftpTabViewState extends State<SftpTabView> {
-  final _local = PaneController(LocalFiles())..open();
+  late final _local = PaneController(widget.ws.localFiles)..open();
   PaneController? _remote;
 
   @override
@@ -181,14 +181,21 @@ class _SftpTabViewState extends State<SftpTabView> {
         }
         final stacked = MediaQuery.sizeOf(context).width < 900;
         final panes = [
-          Expanded(child: _Pane(_local, 'Upload', () => _send(_local, remote))),
+          Expanded(
+            child: _Pane(
+              _local,
+              'Upload',
+              () => _send(_local, remote),
+              local: true,
+            ),
+          ),
           stacked ? const Divider() : const VerticalDivider(width: 1),
           Expanded(
             child: _Pane(
               remote,
               'Download',
               () => _send(remote, _local),
-              onClose: () => widget.ws.closeTab(tab),
+              local: false,
             ),
           ),
         ];
@@ -216,18 +223,27 @@ String _size(int bytes) {
   return '${v.toStringAsFixed(u == 0 || v >= 100 ? 0 : 1)} ${units[u]}';
 }
 
+const _months = [
+  'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', //
+  'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec',
+];
+
 String _date(DateTime? d) {
   if (d == null) return '';
   String two(int n) => n.toString().padLeft(2, '0');
-  return '${d.year}-${two(d.month)}-${two(d.day)} ${two(d.hour)}:${two(d.minute)}';
+  final day = '${_months[d.month - 1]} ${d.day}';
+  // Like `ls -l`: the time for recent files, the year for old ones.
+  return DateTime.now().difference(d).inDays.abs() < 180
+      ? '$day, ${two(d.hour)}:${two(d.minute)}'
+      : '$day, ${d.year}';
 }
 
 class _Pane extends StatelessWidget {
-  const _Pane(this.pane, this.sendLabel, this.onSend, {this.onClose});
+  const _Pane(this.pane, this.sendLabel, this.onSend, {required this.local});
   final PaneController pane;
   final String sendLabel;
   final VoidCallback onSend;
-  final VoidCallback? onClose;
+  final bool local;
 
   Future<void> _guard(BuildContext context, Future<void> Function() op) async {
     try {
@@ -317,10 +333,8 @@ class _Pane extends StatelessWidget {
   Widget build(BuildContext context) {
     final t = Theme.of(context);
     final scheme = t.colorScheme;
-    final muted = t.textTheme.bodySmall?.copyWith(
-      color: scheme.onSurfaceVariant,
-      fontSize: 11.5,
-    );
+    final small = t.textTheme.bodySmall?.copyWith(fontSize: 11.5);
+    final head = t.textTheme.labelSmall?.copyWith(letterSpacing: .4);
     return ListenableBuilder(
       listenable: pane,
       builder: (context, _) {
@@ -328,13 +342,29 @@ class _Pane extends StatelessWidget {
         final chosen = pane.entries
             .where((e) => pane.selected.contains(e.name))
             .toList();
+        final one = chosen.length == 1 ? chosen.first : null;
+        Widget tool(String label, VoidCallback? onTap, {bool danger = false}) =>
+            TextButton(
+              onPressed: onTap,
+              style: TextButton.styleFrom(
+                minimumSize: const Size(0, 30),
+                foregroundColor: danger ? scheme.error : scheme.onSurface,
+              ),
+              child: Text(label),
+            );
         return Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
             Padding(
-              padding: const EdgeInsets.fromLTRB(10, 8, 4, 0),
+              padding: const EdgeInsets.fromLTRB(14, 10, 6, 8),
               child: Row(
                 children: [
+                  Icon(
+                    local ? Icons.laptop_mac : Icons.dns_outlined,
+                    size: 16,
+                    color: scheme.primary,
+                  ),
+                  const SizedBox(width: 8),
                   Expanded(
                     child: Text(
                       pane.backend.label,
@@ -344,21 +374,13 @@ class _Pane extends StatelessWidget {
                   ),
                   IconButton(
                     tooltip: 'Parent folder',
-                    icon: const Icon(Icons.arrow_upward, size: 17),
+                    icon: const Icon(Icons.arrow_upward, size: 16),
                     onPressed: () => pane.open(pane.backend.parent(pane.path)),
                   ),
                   IconButton(
                     tooltip: 'Refresh',
-                    icon: const Icon(Icons.refresh, size: 17),
+                    icon: const Icon(Icons.refresh, size: 16),
                     onPressed: pane.open,
-                  ),
-                  IconButton(
-                    tooltip: 'New folder',
-                    icon: const Icon(
-                      Icons.create_new_folder_outlined,
-                      size: 17,
-                    ),
-                    onPressed: () => _newFolder(context),
                   ),
                   IconButton(
                     tooltip: pane.showHidden
@@ -368,84 +390,120 @@ class _Pane extends StatelessWidget {
                       pane.showHidden
                           ? Icons.visibility_outlined
                           : Icons.visibility_off_outlined,
-                      size: 17,
+                      size: 16,
                     ),
                     onPressed: () => pane.setHidden(!pane.showHidden),
                   ),
-                  if (onClose != null)
-                    IconButton(
-                      tooltip: 'Disconnect',
-                      icon: const Icon(Icons.close, size: 17),
-                      onPressed: onClose,
-                    ),
                 ],
               ),
             ),
             Padding(
-              padding: const EdgeInsets.fromLTRB(10, 4, 10, 6),
+              padding: const EdgeInsets.fromLTRB(12, 0, 12, 8),
               child: TextField(
                 key: ValueKey(pane.path),
                 controller: TextEditingController(text: pane.path),
                 style: mono.copyWith(fontSize: 12),
                 textDirection: TextDirection.ltr,
-                decoration: const InputDecoration(hintText: 'Path'),
+                decoration: const InputDecoration(
+                  hintText: 'Path',
+                  prefixIcon: Icon(Icons.folder_open, size: 15),
+                  prefixIconConstraints: BoxConstraints(minWidth: 34),
+                  contentPadding: EdgeInsets.symmetric(vertical: 9),
+                ),
                 onSubmitted: pane.open,
               ),
             ),
-            if (chosen.isNotEmpty)
-              Container(
-                color: scheme.primaryContainer,
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 10,
-                  vertical: 4,
-                ),
-                child: Wrap(
-                  spacing: 4,
-                  crossAxisAlignment: WrapCrossAlignment.center,
-                  children: [
-                    Text(
-                      '${chosen.length} selected',
-                      style: TextStyle(
-                        fontSize: 12,
-                        color: scheme.onPrimaryContainer,
+            Padding(
+              padding: const EdgeInsets.fromLTRB(12, 0, 8, 6),
+              child: Row(
+                children: [
+                  FilledButton.tonalIcon(
+                    onPressed: chosen.isEmpty ? null : onSend,
+                    style: FilledButton.styleFrom(
+                      minimumSize: const Size(0, 30),
+                    ),
+                    icon: Icon(local ? Icons.upload : Icons.download, size: 15),
+                    label: Text(
+                      chosen.isEmpty
+                          ? sendLabel
+                          : '$sendLabel ${chosen.length}',
+                    ),
+                  ),
+                  const SizedBox(width: 4),
+                  Expanded(
+                    child: SingleChildScrollView(
+                      scrollDirection: Axis.horizontal,
+                      child: Row(
+                        children: [
+                          tool('New folder', () => _newFolder(context)),
+                          tool(
+                            'Rename',
+                            one == null ? null : () => _rename(context, one),
+                          ),
+                          tool(
+                            'Permissions',
+                            one?.mode == null
+                                ? null
+                                : () => _chmod(context, one!),
+                          ),
+                          tool(
+                            'Delete',
+                            chosen.isEmpty
+                                ? null
+                                : () => _delete(context, chosen),
+                            danger: true,
+                          ),
+                        ],
                       ),
                     ),
-                    TextButton(onPressed: onSend, child: Text(sendLabel)),
-                    if (chosen.length == 1)
-                      TextButton(
-                        onPressed: () => _rename(context, chosen.first),
-                        child: const Text('Rename'),
-                      ),
-                    if (chosen.length == 1 && chosen.first.mode != null)
-                      TextButton(
-                        onPressed: () => _chmod(context, chosen.first),
-                        child: const Text('Permissions'),
-                      ),
-                    TextButton(
-                      onPressed: () => _delete(context, chosen),
-                      child: Text(
-                        'Delete',
-                        style: TextStyle(color: scheme.error),
-                      ),
-                    ),
-                  ],
+                  ),
+                ],
+              ),
+            ),
+            Container(
+              height: 26,
+              padding: const EdgeInsets.only(right: 14),
+              decoration: BoxDecoration(
+                color: scheme.surfaceContainerLow,
+                border: Border.symmetric(
+                  horizontal: BorderSide(color: scheme.outlineVariant),
                 ),
               ),
+              child: Row(
+                children: [
+                  const SizedBox(width: 66),
+                  Expanded(child: Text('NAME', style: head)),
+                  SizedBox(width: 44, child: Text('MODE', style: head)),
+                  SizedBox(
+                    width: 70,
+                    child: Text('SIZE', textAlign: TextAlign.end, style: head),
+                  ),
+                  SizedBox(
+                    width: 104,
+                    child: Text(
+                      'MODIFIED',
+                      textAlign: TextAlign.end,
+                      style: head,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            if (pane.loading) const LinearProgressIndicator(minHeight: 2),
             if (pane.error != null)
               Padding(
-                padding: const EdgeInsets.fromLTRB(12, 4, 12, 4),
+                padding: const EdgeInsets.fromLTRB(14, 8, 14, 4),
                 child: Text(
                   pane.error!,
                   style: TextStyle(color: scheme.error, fontSize: 12),
                 ),
               ),
-            if (pane.loading) const LinearProgressIndicator(minHeight: 2),
             Expanded(
               child: items.isEmpty && !pane.loading
-                  ? Center(child: Text('Empty folder', style: muted))
+                  ? Center(child: Text('Empty folder', style: small))
                   : ListView.builder(
                       itemCount: items.length,
-                      itemExtent: 34,
+                      itemExtent: 32,
                       itemBuilder: (context, i) {
                         final e = items[i];
                         final on = pane.selected.contains(e.name);
@@ -455,28 +513,31 @@ class _Pane extends StatelessWidget {
                               : pane.toggle(e.name),
                           child: Container(
                             color: on
-                                ? scheme.primaryContainer.withValues(alpha: .45)
+                                ? scheme.primary.withValues(alpha: .12)
                                 : null,
-                            padding: const EdgeInsets.only(right: 10),
+                            padding: const EdgeInsets.only(right: 14),
                             child: Row(
                               children: [
                                 SizedBox(
-                                  width: 36,
-                                  child: Checkbox(
-                                    value: on,
-                                    onChanged: (_) => pane.toggle(e.name),
+                                  width: 40,
+                                  child: Transform.scale(
+                                    scale: .82,
+                                    child: Checkbox(
+                                      value: on,
+                                      onChanged: (_) => pane.toggle(e.name),
+                                    ),
                                   ),
                                 ),
                                 Icon(
                                   e.isDir
-                                      ? Icons.folder
+                                      ? Icons.folder_rounded
                                       : Icons.insert_drive_file_outlined,
-                                  size: 17,
+                                  size: 16,
                                   color: e.isDir
                                       ? scheme.primary
                                       : scheme.outline,
                                 ),
-                                const SizedBox(width: 8),
+                                const SizedBox(width: 10),
                                 Expanded(
                                   child: Text(
                                     e.name,
@@ -484,28 +545,31 @@ class _Pane extends StatelessWidget {
                                     style: const TextStyle(fontSize: 13),
                                   ),
                                 ),
-                                if (e.mode != null)
-                                  Padding(
-                                    padding: const EdgeInsets.only(left: 8),
-                                    child: Text(
-                                      e.mode!.toRadixString(8).padLeft(3, '0'),
-                                      style: muted?.merge(mono),
-                                    ),
-                                  ),
                                 SizedBox(
-                                  width: 70,
+                                  width: 44,
                                   child: Text(
-                                    e.isDir ? '' : _size(e.size),
-                                    textAlign: TextAlign.end,
-                                    style: muted,
+                                    e.mode == null
+                                        ? ''
+                                        : e.mode!
+                                              .toRadixString(8)
+                                              .padLeft(3, '0'),
+                                    style: small?.merge(mono),
                                   ),
                                 ),
                                 SizedBox(
-                                  width: 112,
+                                  width: 70,
+                                  child: Text(
+                                    e.isDir ? '—' : _size(e.size),
+                                    textAlign: TextAlign.end,
+                                    style: small,
+                                  ),
+                                ),
+                                SizedBox(
+                                  width: 104,
                                   child: Text(
                                     _date(e.modified),
                                     textAlign: TextAlign.end,
-                                    style: muted,
+                                    style: small,
                                   ),
                                 ),
                               ],

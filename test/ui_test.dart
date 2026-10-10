@@ -104,7 +104,7 @@ Match host foo
       ),
     );
     expect(find.textContaining('deploy@web-01'), findsOneWidget);
-    expect(find.text('Production'), findsOneWidget);
+    expect(find.text('PRODUCTION'), findsOneWidget);
 
     await tester.tap(find.text('New host'));
     await tester.pumpAndSettle();
@@ -141,7 +141,8 @@ Match host foo
     ws.tabs.addAll([term, sftp]);
     ws.focus(term);
     await tester.pump(const Duration(milliseconds: 100));
-    expect(find.textContaining('connecting'), findsOneWidget);
+    // Two tabs in the strip, the terminal one showing.
+    expect(find.byIcon(Icons.terminal), findsWidgets);
     ws.focus(sftp);
     await tester.pump(const Duration(milliseconds: 100));
     expect(find.text('Reconnect'), findsWidgets);

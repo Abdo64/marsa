@@ -545,6 +545,28 @@ void main() {
     await vault.syncNow();
     expect(vault.data.snippets.all.single.command, 'df -h');
 
+    // Logging in to the sync server with the device's own keys.
+    final home = Directory('${tmp.path}/sync-dot-ssh')..createSync();
+    DeviceKeys.directory = home;
+    DeviceKeys.lock();
+    SyncConfig viaDevice() => SyncConfig(
+      type: SyncConfig.sftp,
+      path: '${tmp.path}/synced/team/vault.marsa',
+      host: '127.0.0.1',
+      port: port,
+      username: user,
+      deviceKeys: true,
+    );
+    await vault.setSync(viaDevice());
+    expect(vault.syncState, SyncState.error);
+    expect(vault.syncError, contains('No usable SSH key'));
+    File(
+      '${home.path}/id_ed25519',
+    ).writeAsStringSync(vault.data.keys[host.keyId]!.privateKey);
+    await vault.setSync(viaDevice());
+    expect(vault.syncState, SyncState.idle, reason: vault.syncError);
+    expect(vault.sync!.privateKey, isEmpty);
+
     // A sync server presenting a different key stops the sync.
     b.sync!.fingerprint = 'SHA256:somebody-else';
     await b.syncNow();

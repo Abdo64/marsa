@@ -1,8 +1,9 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:typed_data';
 
 import 'package:dartssh2/dartssh2.dart';
-import 'package:flutter/foundation.dart';
+import 'package:flutter/widgets.dart';
 import 'package:xterm/xterm.dart';
 
 import '../core/models.dart';
@@ -49,6 +50,9 @@ class TerminalTab extends AppTab {
   final Prompter _ui;
   final terminal = Terminal(maxLines: 10000);
   final controller = TerminalController();
+
+  /// Keyboard focus of this tab's terminal view.
+  final focusNode = FocusNode();
   Connection? _conn;
   SSHSession? _shell;
 
@@ -92,6 +96,12 @@ class TerminalTab extends AppTab {
       _shell?.write(Uint8List.fromList(utf8.encode(text)));
 
   @override
+  void dispose() {
+    focusNode.dispose();
+    super.dispose();
+  }
+
+  @override
   void close() {
     _shell = null;
     _conn?.close();
@@ -105,7 +115,7 @@ class SftpTab extends AppTab {
   final VaultSession _vault;
   final Prompter _ui;
   Connection? _conn;
-  RemoteFiles? remote;
+  FileBackend? remote;
 
   @override
   Future<void> start() async {
@@ -148,6 +158,9 @@ class Workspace extends ChangeNotifier {
   final Prompter ui;
   final ForwardManager forwards;
   final transfers = TransferManager();
+
+  /// The "this computer" side of SFTP views.
+  FileBackend localFiles = LocalFiles();
   final List<AppTab> tabs = [];
 
   Section section = Section.hosts;

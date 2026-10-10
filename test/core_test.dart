@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'dart:io';
 import 'dart:typed_data';
 
@@ -201,6 +202,37 @@ void main() {
       await byPassword.lock();
     },
   );
+
+  test('a sync link carries the location but never a secret', () {
+    final cfg = SyncConfig(
+      type: SyncConfig.sftp,
+      path: 'marsa/Team.marsa',
+      host: 'vps.example.com',
+      port: 2222,
+      username: 'sync',
+      password: 'hunter2',
+      privateKey: 'PRIVATE-PEM',
+      fingerprint: 'SHA256:abc',
+      deviceKeys: true,
+    );
+    final link = cfg.link!;
+    final decoded = utf8.decode(base64Url.decode(link.split(':').last));
+    expect(decoded.contains('hunter2'), isFalse);
+    expect(decoded.contains('PRIVATE-PEM'), isFalse);
+
+    final back = SyncConfig.fromLink('  $link\n')!;
+    expect(back.host, 'vps.example.com');
+    expect(back.port, 2222);
+    expect(back.username, 'sync');
+    expect(back.path, 'marsa/Team.marsa');
+    expect(back.deviceKeys, isTrue);
+    expect(back.password, isEmpty);
+    expect(back.fingerprint, isEmpty);
+
+    expect(SyncConfig.fromLink('hello'), isNull);
+    expect(SyncConfig.fromLink('marsa-sync:not-base64!'), isNull);
+    expect(SyncConfig(type: SyncConfig.folder, path: '/x').link, isNull);
+  });
 
   test('reads the vault list written by the first release', () async {
     final dir = Directory('${tmp.path}/old')..createSync();

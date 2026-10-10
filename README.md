@@ -8,6 +8,12 @@ Marsa server.
 
 Android and iOS are planned on the same codebase.
 
+![Hosts](docs/screenshots/hosts-dark.png)
+
+| Terminal | SFTP |
+| --- | --- |
+| ![Terminal](docs/screenshots/terminal-dark.png) | ![SFTP](docs/screenshots/sftp-light.png) |
+
 ## Features
 
 - **Hosts** with groups, tags, search, jump hosts (ProxyJump) and import from
@@ -51,7 +57,10 @@ credentials) stay in the local copy and are never uploaded.
 fill it in from any saved host, or choose a folder.
 
 **Every other device:** on the unlock screen choose *Join a synced vault*,
-enter the master password and point it at the same location.
+enter the master password and point it at the same location. To avoid
+retyping the server details, use *Copy link* next to Sync in Settings on the
+first device and paste it into the join dialog; the link holds the location
+only, never a password or key.
 
 **Sharing with a team:** create a separate vault for shared servers, sync it
 somewhere the team can reach, and give teammates the location and the master
@@ -94,8 +103,13 @@ flutter analyze
 flutter test
 ```
 
-`flutter test integration_test -d macos` (or `-d windows`) additionally checks
-the real OS credential store.
+`flutter test --update-goldens tool/screenshots_test.dart` re-renders every
+screen with demo data into `docs/screenshots/`, which is the quickest way to
+review a design change.
+
+`flutter test integration_test -d macos` (or `-d windows`) runs the real app
+in a window: a full new-user journey (vault, host, terminal, SFTP, remember,
+lock, reopen) and the OS credential store.
 
 `test/ssh_integration_test.dart` starts a throwaway, unprivileged `sshd` on a
 loopback port inside a temp directory and exercises real connections: key

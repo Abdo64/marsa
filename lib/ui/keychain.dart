@@ -229,7 +229,7 @@ class KeychainPage extends StatelessWidget {
           ),
         for (final k in keys)
           Padding(
-            padding: const EdgeInsets.fromLTRB(20, 0, 20, 8),
+            padding: const EdgeInsets.fromLTRB(24, 0, 24, 8),
             child: Card(
               child: ListTile(
                 leading: const Icon(Icons.key_outlined),
@@ -283,7 +283,7 @@ class KeychainPage extends StatelessWidget {
           ],
         ),
         Padding(
-          padding: const EdgeInsets.fromLTRB(20, 0, 20, 12),
+          padding: const EdgeInsets.fromLTRB(24, 0, 24, 12),
           child: Text(
             'An identity is a username with a password or key that several '
             'hosts can share. Change it once and every host follows.',
@@ -292,7 +292,7 @@ class KeychainPage extends StatelessWidget {
         ),
         for (final i in identities)
           Padding(
-            padding: const EdgeInsets.fromLTRB(20, 0, 20, 8),
+            padding: const EdgeInsets.fromLTRB(24, 0, 24, 8),
             child: Card(
               child: ListTile(
                 leading: const Icon(Icons.badge_outlined),

@@ -174,17 +174,32 @@ class _UnlockPageState extends State<UnlockPage> {
   Widget build(BuildContext context) {
     final t = Theme.of(context);
     final scheme = t.colorScheme;
+    final remembered = _selected?.remembered ?? false;
     return Scaffold(
       body: Center(
         child: SingleChildScrollView(
           padding: const EdgeInsets.all(24),
           child: ConstrainedBox(
-            constraints: const BoxConstraints(maxWidth: 400),
+            constraints: const BoxConstraints(maxWidth: 380),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                Icon(Icons.anchor, size: 40, color: scheme.primary),
-                const SizedBox(height: 8),
+                Center(
+                  child: Container(
+                    width: 52,
+                    height: 52,
+                    decoration: BoxDecoration(
+                      color: scheme.primary,
+                      borderRadius: BorderRadius.circular(14),
+                    ),
+                    child: Icon(
+                      Icons.anchor,
+                      size: 30,
+                      color: scheme.onPrimary,
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 14),
                 Text(
                   'Marsa',
                   textAlign: TextAlign.center,
@@ -196,79 +211,146 @@ class _UnlockPageState extends State<UnlockPage> {
                       ? 'Create a vault to keep your servers and keys in.'
                       : 'Unlock a vault to continue.',
                   textAlign: TextAlign.center,
-                  style: t.textTheme.bodyMedium?.copyWith(
-                    color: scheme.onSurfaceVariant,
-                  ),
+                  style: t.textTheme.bodySmall?.copyWith(fontSize: 13),
                 ),
-                const SizedBox(height: 24),
-                if (_reg.vaults.isNotEmpty) ...[
+                const SizedBox(height: 22),
+                if (_reg.vaults.isNotEmpty)
                   Card(
-                    clipBehavior: Clip.antiAlias,
-                    child: Column(
-                      children: [
-                        for (final v in _reg.vaults)
-                          ListTile(
-                            selected: v == _selected,
-                            selectedTileColor: scheme.primaryContainer,
-                            leading: Icon(
-                              v == _selected
-                                  ? Icons.lock_open_outlined
-                                  : Icons.lock_outline,
-                            ),
-                            title: Text(v.name),
-                            subtitle: v.remembered
-                                ? const Text('Remembered on this device')
-                                : null,
-                            trailing: IconButton(
-                              tooltip: 'Remove from this device',
-                              icon: const Icon(Icons.close, size: 18),
-                              onPressed: _working ? null : () => _remove(v),
-                            ),
-                            onTap: () {
-                              setState(() => _select(v));
-                              _focus.requestFocus();
-                            },
-                          ),
-                      ],
-                    ),
-                  ),
-                  const SizedBox(height: 12),
-                  TextField(
-                    controller: _password,
-                    focusNode: _focus,
-                    autofocus: true,
-                    obscureText: true,
-                    enabled: !_working,
-                    decoration: InputDecoration(
-                      labelText: _selected?.remembered ?? false
-                          ? 'Master password (not needed)'
-                          : 'Master password',
-                    ),
-                    onSubmitted: (_) => _unlock(),
-                  ),
-                  CheckboxListTile(
-                    value: _remember,
-                    onChanged: _working
-                        ? null
-                        : (v) => setState(() => _remember = v ?? false),
-                    dense: true,
-                    contentPadding: EdgeInsets.zero,
-                    controlAffinity: ListTileControlAffinity.leading,
-                    title: const Text('Remember on this device'),
-                    subtitle: const Text(
-                      'Opens without the password for anyone signed in to '
-                      'this computer as you.',
-                    ),
-                  ),
-                  const SizedBox(height: 4),
-                  FilledButton(
-                    onPressed: _working ? null : _unlock,
                     child: Padding(
-                      padding: const EdgeInsets.symmetric(vertical: 6),
-                      child: Text(_working ? 'Unlocking…' : 'Unlock'),
+                      padding: const EdgeInsets.all(16),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: [
+                          for (final v in _reg.vaults)
+                            Padding(
+                              padding: const EdgeInsets.only(bottom: 6),
+                              child: Material(
+                                color: v == _selected
+                                    ? scheme.surfaceContainerHigh
+                                    : Colors.transparent,
+                                borderRadius: BorderRadius.circular(8),
+                                child: InkWell(
+                                  borderRadius: BorderRadius.circular(8),
+                                  onTap: _working
+                                      ? null
+                                      : () {
+                                          setState(() => _select(v));
+                                          _focus.requestFocus();
+                                        },
+                                  child: Padding(
+                                    padding: const EdgeInsets.fromLTRB(
+                                      10,
+                                      6,
+                                      2,
+                                      6,
+                                    ),
+                                    child: Row(
+                                      children: [
+                                        Icon(
+                                          v == _selected
+                                              ? Icons.radio_button_checked
+                                              : Icons.radio_button_unchecked,
+                                          size: 17,
+                                          color: v == _selected
+                                              ? scheme.primary
+                                              : scheme.outline,
+                                        ),
+                                        const SizedBox(width: 10),
+                                        Expanded(
+                                          child: Column(
+                                            crossAxisAlignment:
+                                                CrossAxisAlignment.start,
+                                            children: [
+                                              Text(
+                                                v.name,
+                                                style: t.textTheme.titleSmall,
+                                              ),
+                                              if (v.remembered)
+                                                Text(
+                                                  'Remembered on this device',
+                                                  style: t.textTheme.labelSmall,
+                                                ),
+                                            ],
+                                          ),
+                                        ),
+                                        IconButton(
+                                          tooltip: 'Remove from this device',
+                                          icon: const Icon(
+                                            Icons.delete_outline,
+                                            size: 16,
+                                          ),
+                                          onPressed: _working
+                                              ? null
+                                              : () => _remove(v),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            ),
+                          const SizedBox(height: 8),
+                          labeled(
+                            remembered
+                                ? 'Master password (not needed)'
+                                : 'Master password',
+                            TextField(
+                              controller: _password,
+                              focusNode: _focus,
+                              autofocus: true,
+                              obscureText: true,
+                              enabled: !_working,
+                              onSubmitted: (_) => _unlock(),
+                            ),
+                          ),
+                          const SizedBox(height: 10),
+                          InkWell(
+                            borderRadius: BorderRadius.circular(6),
+                            onTap: _working
+                                ? null
+                                : () => setState(() => _remember = !_remember),
+                            child: Padding(
+                              padding: const EdgeInsets.symmetric(vertical: 4),
+                              child: Row(
+                                children: [
+                                  Checkbox(
+                                    value: _remember,
+                                    onChanged: _working
+                                        ? null
+                                        : (v) => setState(
+                                            () => _remember = v ?? false,
+                                          ),
+                                  ),
+                                  const SizedBox(width: 8),
+                                  Expanded(
+                                    child: Tooltip(
+                                      message:
+                                          'Opens without the password for '
+                                          'anyone signed in to this computer '
+                                          'as you.',
+                                      child: Text(
+                                        'Remember on this device',
+                                        style: t.textTheme.bodyMedium,
+                                      ),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
+                          const SizedBox(height: 12),
+                          FilledButton(
+                            onPressed: _working ? null : _unlock,
+                            style: FilledButton.styleFrom(
+                              minimumSize: const Size(0, 40),
+                            ),
+                            child: Text(_working ? 'Unlocking…' : 'Unlock'),
+                          ),
+                        ],
+                      ),
                     ),
-                  ),
-                ] else if (_working)
+                  )
+                else if (_working)
                   const Center(child: CircularProgressIndicator()),
                 if (_error != null) ...[
                   const SizedBox(height: 12),
@@ -284,14 +366,20 @@ class _UnlockPageState extends State<UnlockPage> {
                   spacing: 8,
                   runSpacing: 8,
                   children: [
-                    OutlinedButton.icon(
-                      onPressed: _working ? null : _create,
-                      icon: const Icon(Icons.add, size: 18),
-                      label: const Text('New vault'),
-                    ),
-                    OutlinedButton.icon(
+                    _reg.vaults.isEmpty
+                        ? FilledButton.icon(
+                            onPressed: _working ? null : _create,
+                            icon: const Icon(Icons.add, size: 17),
+                            label: const Text('New vault'),
+                          )
+                        : TextButton.icon(
+                            onPressed: _working ? null : _create,
+                            icon: const Icon(Icons.add, size: 17),
+                            label: const Text('New vault'),
+                          ),
+                    TextButton.icon(
                       onPressed: _working ? null : _join,
-                      icon: const Icon(Icons.cloud_download_outlined, size: 18),
+                      icon: const Icon(Icons.cloud_download_outlined, size: 17),
                       label: const Text('Join a synced vault'),
                     ),
                   ],

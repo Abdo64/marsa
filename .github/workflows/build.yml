@@ -18,6 +18,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: subosito/flutter-action@v2
         with:
+          flutter-version: 3.44.1
           channel: stable
           cache: true
       - run: flutter pub get
@@ -31,6 +32,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: subosito/flutter-action@v2
         with:
+          flutter-version: 3.44.1
           channel: stable
           cache: true
       - run: flutter build windows --release
@@ -49,6 +51,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: subosito/flutter-action@v2
         with:
+          flutter-version: 3.44.1
           channel: stable
           cache: true
       - run: flutter build macos --release

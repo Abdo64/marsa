@@ -4,6 +4,9 @@ import 'dart:typed_data';
 
 import 'package:dartssh2/dartssh2.dart';
 
+import '../ssh/connector.dart';
+import '../ssh/device_keys.dart';
+
 class SyncError implements Exception {
   SyncError(this.message);
   final String message;
@@ -23,6 +26,7 @@ class SyncConfig {
     this.password = '',
     this.privateKey = '',
     this.fingerprint = '',
+    this.deviceKeys = false,
   });
 
   factory SyncConfig.fromJson(Map<String, dynamic> j) => SyncConfig(
@@ -34,6 +38,7 @@ class SyncConfig {
     password: j['password'] as String? ?? '',
     privateKey: j['privateKey'] as String? ?? '',
     fingerprint: j['fingerprint'] as String? ?? '',
+    deviceKeys: j['deviceKeys'] as bool? ?? false,
   );
 
   static const folder = 'folder';
@@ -50,8 +55,56 @@ class SyncConfig {
   final String password;
   final String privateKey;
 
+  /// Log in to the sync server with the keys in `~/.ssh` on this device.
+  final bool deviceKeys;
+
   /// Host key pinned on first contact with the SFTP server.
   String fingerprint;
+
+  static const _linkPrefix = 'marsa-sync:';
+
+  /// Where this vault syncs, as one string to paste on another device so
+  /// nobody has to retype a server address. It carries no password or key;
+  /// null for a folder, whose path differs from machine to machine.
+  String? get link => type != sftp
+      ? null
+      : _linkPrefix +
+            base64Url.encode(
+              utf8.encode(
+                jsonEncode({
+                  'host': host,
+                  'port': port,
+                  'user': username,
+                  'path': path,
+                  'deviceKeys': deviceKeys,
+                }),
+              ),
+            );
+
+  /// Parses [link]; null when [text] is not one.
+  static SyncConfig? fromLink(String text) {
+    text = text.trim();
+    if (!text.startsWith(_linkPrefix)) return null;
+    try {
+      final j =
+          jsonDecode(
+                utf8.decode(
+                  base64Url.decode(text.substring(_linkPrefix.length)),
+                ),
+              )
+              as Map<String, dynamic>;
+      return SyncConfig(
+        type: sftp,
+        host: j['host'] as String,
+        port: j['port'] as int,
+        username: j['user'] as String,
+        path: j['path'] as String,
+        deviceKeys: j['deviceKeys'] as bool? ?? false,
+      );
+    } catch (_) {
+      return null;
+    }
+  }
 
   String get summary =>
       type == folder ? path : 'sftp://$username@$host:$port/$path';
@@ -65,6 +118,7 @@ class SyncConfig {
     'password': password,
     'privateKey': privateKey,
     'fingerprint': fingerprint,
+    'deviceKeys': deviceKeys,
   };
 }
 
@@ -84,6 +138,17 @@ Future<T> withSyncTarget<T>(
     throw SyncError('Unknown sync type: ${cfg.type}');
   }
 
+  final identities = <SSHKeyPair>[
+    if (cfg.privateKey.trim().isNotEmpty) ...SSHKeyPair.fromPem(cfg.privateKey),
+  ];
+  if (cfg.deviceKeys) {
+    try {
+      identities.addAll(await DeviceKeys.load(const _NoPrompts()));
+    } on ConnectError catch (e) {
+      throw SyncError(e.message);
+    }
+  }
+
   final SSHSocket socket;
   try {
     socket = await SSHSocket.connect(
@@ -98,9 +163,7 @@ Future<T> withSyncTarget<T>(
   final client = SSHClient(
     socket,
     username: cfg.username,
-    identities: cfg.privateKey.trim().isEmpty
-        ? null
-        : SSHKeyPair.fromPem(cfg.privateKey),
+    identities: identities.isEmpty ? null : identities,
     onPasswordRequest: cfg.password.isEmpty ? null : () => cfg.password,
     onVerifyHostKey: (type, fingerprint) {
       final seen = utf8.decode(fingerprint);
@@ -134,6 +197,34 @@ Future<T> withSyncTarget<T>(
   } finally {
     client.close();
   }
+}
+
+/// Sync runs in the background, so it never interrupts with a question. A
+/// passphrase-protected device key is used only once a connection has
+/// unlocked it for this session.
+class _NoPrompts implements Prompter {
+  const _NoPrompts();
+
+  @override
+  Future<bool> confirmNewHost(String h, String t, String f) async => false;
+
+  @override
+  Future<bool> confirmChangedHost(
+    String h,
+    String t,
+    String o,
+    String f,
+  ) async => false;
+
+  @override
+  Future<String?> askSecret(String title, String prompt) async => null;
+
+  @override
+  Future<List<String>?> askInteractive(
+    String t,
+    String i,
+    List<SSHUserInfoPrompt> p,
+  ) async => null;
 }
 
 class _FolderIo implements SyncIo {
