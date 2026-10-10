@@ -436,6 +436,8 @@ class _TabStrip extends StatelessWidget {
     final active = ws.active;
     final snippets = ws.vault.data.snippets.all.toList()
       ..sort((a, b) => a.label.compareTo(b.label));
+    final hosts = ws.vault.data.hosts.all.toList()
+      ..sort((a, b) => a.title.toLowerCase().compareTo(b.title.toLowerCase()));
     return Container(
       height: 40,
       decoration: BoxDecoration(
@@ -477,8 +479,26 @@ class _TabStrip extends StatelessWidget {
                         selected: active != null && ws.layout == page,
                         onTap: () => ws.open(page),
                         onSeparate: () => ws.separate(page),
+                        onClose: () => page.tabs.toList().forEach(ws.closeTab),
                       ),
                     ),
+                PopupMenuButton<VoidCallback>(
+                  tooltip: 'New session',
+                  icon: const Icon(Icons.add, size: 17),
+                  onSelected: (f) => f(),
+                  itemBuilder: (_) => [
+                    for (final h in hosts)
+                      PopupMenuItem(
+                        value: () => ws.openTerminal(h),
+                        child: Text(h.title, overflow: TextOverflow.ellipsis),
+                      ),
+                    if (hosts.isNotEmpty) const PopupMenuDivider(),
+                    PopupMenuItem(
+                      value: () => ws.show(Section.hosts),
+                      child: const Text('All hosts…'),
+                    ),
+                  ],
+                ),
               ],
             ),
           ),
@@ -612,11 +632,13 @@ class _SplitTab extends StatelessWidget {
     required this.selected,
     required this.onTap,
     required this.onSeparate,
+    required this.onClose,
   });
   final Tile page;
   final bool selected;
   final VoidCallback onTap;
   final VoidCallback onSeparate;
+  final VoidCallback onClose;
 
   @override
   Widget build(BuildContext context) {
@@ -678,6 +700,17 @@ class _SplitTab extends StatelessWidget {
                   child: Padding(
                     padding: const EdgeInsets.all(3),
                     child: Icon(Icons.tab_unselected, size: 14, color: fg),
+                  ),
+                ),
+              ),
+              Tooltip(
+                message: 'Close all ${names.length}',
+                child: InkWell(
+                  onTap: onClose,
+                  borderRadius: BorderRadius.circular(5),
+                  child: Padding(
+                    padding: const EdgeInsets.all(3),
+                    child: Icon(Icons.close, size: 14, color: fg),
                   ),
                 ),
               ),

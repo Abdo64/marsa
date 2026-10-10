@@ -175,6 +175,8 @@ Match host foo
     // The two now share one entry in the tab strip.
     expect(ws.pages, hasLength(1));
     expect(find.byTooltip('Separate into tabs'), findsOneWidget);
+    expect(find.byTooltip('Close all 2'), findsOneWidget);
+    expect(find.byTooltip('New session'), findsOneWidget);
     expect(find.byTooltip('Move back to its own tab'), findsNWidgets(2));
 
     // Now two tiles are on screen; drag the sftp tile by its title bar onto
