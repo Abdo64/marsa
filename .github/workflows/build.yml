@@ -1,7 +1,14 @@
-name: build
+name: release
 
-# Runs for version tags and when started by hand, not on every push: macOS
-# runners are billed at a high multiple on private repositories.
+# Builds ready-to-install downloads and attaches them to a GitHub Release, so
+# nobody has to compile the app to use it:
+#
+#   Marsa-macos.dmg              drag to Applications
+#   Marsa-windows-setup.exe      installer
+#   Marsa-windows-portable.zip   unzip and run, no install
+#
+# Runs when a version tag is pushed (git tag v0.2.0 && git push origin v0.2.0)
+# or when started by hand from the Actions tab (builds only, no release).
 on:
   push:
     tags: ['v*']
@@ -9,6 +16,11 @@ on:
 
 permissions:
   contents: write
+
+env:
+  # The version the app is developed and tested with, so a new Flutter
+  # release cannot break a tagged build with new lints or API changes.
+  FLUTTER_VERSION: 3.44.1
 
 jobs:
   test:
@@ -18,7 +30,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: subosito/flutter-action@v2
         with:
-          flutter-version: 3.44.1
+          flutter-version: ${{ env.FLUTTER_VERSION }}
           channel: stable
           cache: true
       - run: flutter pub get
@@ -32,17 +44,38 @@ jobs:
       - uses: actions/checkout@v4
       - uses: subosito/flutter-action@v2
         with:
-          flutter-version: 3.44.1
+          flutter-version: ${{ env.FLUTTER_VERSION }}
           channel: stable
           cache: true
       - run: flutter build windows --release
-      - name: Package
+      - name: Bundle the Visual C++ runtime
+        # Flutter apps need these three DLLs; shipping them beside the exe
+        # means the app also starts on a PC that never installed the runtime.
         shell: pwsh
-        run: Compress-Archive -Path build/windows/x64/runner/Release/* -DestinationPath marsa-windows-x64.zip
+        run: |
+          foreach ($dll in 'msvcp140.dll', 'vcruntime140.dll', 'vcruntime140_1.dll') {
+            Copy-Item "$env:SystemRoot\System32\$dll" build\windows\x64\runner\Release\
+          }
+      - name: Portable zip
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force dist | Out-Null
+          Compress-Archive -Path build\windows\x64\runner\Release\* -DestinationPath dist\Marsa-windows-portable.zip
+      - name: Installer
+        shell: pwsh
+        run: |
+          $version = (Select-String -Path pubspec.yaml -Pattern '^version:\s*([0-9.]+)').Matches[0].Groups[1].Value
+          $iscc = "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe"
+          if (!(Test-Path $iscc)) { choco install innosetup -y --no-progress }
+          & $iscc "/DAppVersion=$version" windows\installer.iss
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - uses: actions/upload-artifact@v4
         with:
-          name: marsa-windows-x64
-          path: marsa-windows-x64.zip
+          name: windows
+          path: |
+            dist/Marsa-windows-setup.exe
+            dist/Marsa-windows-portable.zip
+          if-no-files-found: error
 
   macos:
     needs: test
@@ -51,16 +84,21 @@ jobs:
       - uses: actions/checkout@v4
       - uses: subosito/flutter-action@v2
         with:
-          flutter-version: 3.44.1
+          flutter-version: ${{ env.FLUTTER_VERSION }}
           channel: stable
           cache: true
       - run: flutter build macos --release
-      - name: Package
-        run: ditto -c -k --keepParent build/macos/Build/Products/Release/Marsa.app marsa-macos-universal.zip
+      - name: Disk image
+        run: |
+          mkdir -p dist stage
+          ditto build/macos/Build/Products/Release/Marsa.app stage/Marsa.app
+          ln -s /Applications stage/Applications
+          hdiutil create -volname Marsa -srcfolder stage -ov -format UDZO dist/Marsa-macos.dmg
       - uses: actions/upload-artifact@v4
         with:
-          name: marsa-macos-universal
-          path: marsa-macos-universal.zip
+          name: macos
+          path: dist/Marsa-macos.dmg
+          if-no-files-found: error
 
   release:
     if: startsWith(github.ref, 'refs/tags/v')
@@ -72,6 +110,9 @@ jobs:
           merge-multiple: true
       - uses: softprops/action-gh-release@v2
         with:
+          generate_release_notes: true
+          fail_on_unmatched_files: true
           files: |
-            marsa-windows-x64.zip
-            marsa-macos-universal.zip
+            Marsa-macos.dmg
+            Marsa-windows-setup.exe
+            Marsa-windows-portable.zip

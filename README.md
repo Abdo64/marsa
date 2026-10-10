@@ -73,11 +73,22 @@ Sync runs when you unlock, shortly after every change, and every few minutes.
 
 ## Install
 
-Download the latest build from the Releases page, or build it yourself.
+No compiling needed. These links always point at the latest release:
 
-- **Windows:** unzip and run `marsa.exe`. Keep the files in the zip together.
-- **macOS:** unzip and move `Marsa.app` to Applications. Builds are not
-  notarised, so the first time right-click the app and choose *Open*.
+| Platform | Download | Then |
+| --- | --- | --- |
+| macOS (Apple Silicon and Intel) | [**Marsa-macos.dmg**](https://github.com/AdnanBolifa/marsa/releases/latest/download/Marsa-macos.dmg) | Open it and drag Marsa to Applications |
+| Windows 10/11 (64-bit) | [**Marsa-windows-setup.exe**](https://github.com/AdnanBolifa/marsa/releases/latest/download/Marsa-windows-setup.exe) | Run the installer; no administrator rights needed |
+| Windows, no install | [Marsa-windows-portable.zip](https://github.com/AdnanBolifa/marsa/releases/latest/download/Marsa-windows-portable.zip) | Unzip anywhere and run `marsa.exe` |
+
+All versions are on the [Releases page](https://github.com/AdnanBolifa/marsa/releases).
+
+The builds are not code-signed yet, so the first launch needs one extra click:
+
+- **macOS:** right-click Marsa in Applications and choose *Open*, then *Open*
+  again. (If macOS says the app is damaged, run
+  `xattr -dr com.apple.quarantine /Applications/Marsa.app` once.)
+- **Windows:** on the SmartScreen prompt choose *More info* → *Run anyway*.
 
 ## Build from source
 
@@ -93,8 +104,12 @@ flutter build windows --release # build\windows\x64\runner\Release\
 ```
 
 Flutter cannot cross-compile desktop apps: the Windows build must run on
-Windows. The included GitHub Actions workflow builds both platforms and
-attaches the zips to a release when you push a `v*` tag.
+Windows. You rarely need to, though. Pushing a version tag makes GitHub Actions
+build the macOS disk image and the Windows installer and publish them:
+
+```sh
+git tag v0.2.0 && git push origin v0.2.0
+```
 
 ### Tests
 
