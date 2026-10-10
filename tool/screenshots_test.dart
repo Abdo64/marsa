@@ -208,6 +208,12 @@ void main() {
     await tester.pumpAndSettle();
     await shot('hosts-$suffix');
 
+    await tester.tap(find.text('Production'));
+    await tester.pumpAndSettle();
+    await shot('hosts-group-$suffix');
+    await tester.tap(find.text('All hosts'));
+    await tester.pumpAndSettle();
+
     await tester.tap(find.text('New host'));
     await tester.pumpAndSettle();
     await shot('host-dialog-$suffix');

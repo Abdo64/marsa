@@ -22,32 +22,43 @@ a website need **Developer ID Application**.
 
 1. **Create the certificate.** In Xcode: Settings → Accounts → select the team →
    Manage Certificates → **+** → *Developer ID Application*.
-2. **Export it.** Open Keychain Access, find *Developer ID Application: Your
-   Name (TEAMID)*, expand it so the private key is included, right-click →
-   Export, save as `developer-id.p12` and choose a password.
+2. **Export it.** Open Keychain Access → *My Certificates*, find *Developer ID
+   Application: Your Name (TEAMID)*, right-click → Export, save it as a `.p12`
+   and choose a password.
 3. **Create an app-specific password** for notarisation at
    [account.apple.com](https://account.apple.com) → Sign-In and Security →
    App-Specific Passwords.
-4. **Find your Team ID** (ten characters) at
-   [developer.apple.com/account](https://developer.apple.com/account) →
-   Membership details.
-5. **Add the secrets** in the GitHub repository: Settings → Secrets and
-   variables → Actions → New repository secret.
+4. **Run the setup script** with the path of the exported file:
 
-   | Secret | Value |
-   | --- | --- |
-   | `MACOS_CERTIFICATE_P12` | output of `base64 -i developer-id.p12` |
-   | `MACOS_CERTIFICATE_PASSWORD` | the password chosen in step 2 |
-   | `APPLE_ID` | the Apple ID email of the developer account |
-   | `APPLE_APP_PASSWORD` | the app-specific password from step 3 |
-   | `APPLE_TEAM_ID` | the Team ID from step 4 |
+   ```sh
+   tool/setup_signing.sh ~/Desktop/developer-id.p12
+   ```
 
-6. **Delete `developer-id.p12`** from your disk once the secret is saved. It is
-   the key to publishing software under your name.
+   It asks for the two passwords and your Apple ID, checks the certificate and
+   the Apple credentials before saving anything, stores the five secrets in the
+   GitHub repository through the GitHub CLI (`brew install gh`), and offers to
+   rebuild the latest release so its download is signed straight away.
+5. **Delete the `.p12`** once the script finishes. It is the key to publishing
+   software under your name.
 
-The next version tag you push is then signed, notarised and stapled. The
+From then on every version tag is signed, notarised and stapled. The
 workflow's last step asks macOS itself (`spctl`) to confirm the disk image is
 accepted, so a release cannot go out half-signed.
+
+<details>
+<summary>Setting the secrets by hand instead</summary>
+
+Repository Settings → Secrets and variables → Actions → New repository secret:
+
+| Secret | Value |
+| --- | --- |
+| `MACOS_CERTIFICATE_P12` | output of `base64 -i developer-id.p12` |
+| `MACOS_CERTIFICATE_PASSWORD` | the password chosen in step 2 |
+| `APPLE_ID` | the Apple ID email of the developer account |
+| `APPLE_APP_PASSWORD` | the app-specific password from step 3 |
+| `APPLE_TEAM_ID` | the ten-character Team ID in the certificate's name |
+
+</details>
 
 ## Windows
 

@@ -16,10 +16,15 @@ Android and iOS are planned on the same codebase.
 
 ## Features
 
-- **Hosts** with groups, tags, search, jump hosts (ProxyJump) and import from
-  `~/.ssh/config`. A host can sign in with **this device's SSH keys**
+- **Hosts** with tags, search, jump hosts (ProxyJump) and quick connect by
+  typing `user@host`. A **groups panel** beside the list switches between
+  groups in one click. A host can sign in with **this device's SSH keys**
   (`~/.ssh/id_*`), used in place and never copied into the vault, so each
   device connects with its own key.
+- **Import** hosts from an OpenSSH config, a CSV (including the layout
+  Termius uses for its own CSV import), a PuTTY registry export or, on
+  Windows, PuTTY directly, and MobaXterm session files. The format is
+  detected from the file.
 - **Terminal**: xterm-compatible, 256/true colour, several sessions side by
   side, copy/paste, reconnect, four colour schemes.
 - **SFTP**: two panes (this computer and the server), upload and download of
