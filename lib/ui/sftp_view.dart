@@ -205,7 +205,17 @@ class _SftpTabViewState extends State<SftpTabView> {
     );
   }
 
-  Widget _side(int i) {
+  // A side needs room for its header, path, toolbar and a few rows. In a
+  // small tile it keeps that height and scrolls instead of being squashed.
+  Widget _side(int i) => LayoutBuilder(
+    builder: (context, box) => box.maxHeight >= 260
+        ? _sideBody(i, box.maxWidth)
+        : SingleChildScrollView(
+            child: SizedBox(height: 260, child: _sideBody(i, box.maxWidth)),
+          ),
+  );
+
+  Widget _sideBody(int i, double width) {
     final scheme = Theme.of(context).colorScheme;
     final side = widget.tab.sides[i];
     final pane = _panes[i];
@@ -218,6 +228,7 @@ class _SftpTabViewState extends State<SftpTabView> {
         // the second.
         forward: i == 0,
         onSend: other == null ? null : () => _send(pane, other),
+        roomy: width >= 440,
       );
     }
     return Column(
@@ -259,22 +270,26 @@ class _SftpTabViewState extends State<SftpTabView> {
   @override
   Widget build(BuildContext context) => ListenableBuilder(
     listenable: widget.tab,
-    builder: (context, _) {
-      final stacked = MediaQuery.sizeOf(context).width < 900;
-      final panes = [
-        Expanded(child: _side(0)),
-        stacked ? const Divider() : const VerticalDivider(width: 1),
-        Expanded(child: _side(1)),
-      ];
-      return Column(
-        children: [
-          Expanded(
-            child: stacked ? Column(children: panes) : Row(children: panes),
-          ),
-          _Transfers(widget.ws.transfers),
-        ],
-      );
-    },
+    // Sized by the space this view has, not the window: in a narrow tile
+    // the two sides stack instead of sitting side by side.
+    builder: (context, _) => LayoutBuilder(
+      builder: (context, box) {
+        final stacked = box.maxWidth < 700;
+        final panes = [
+          Expanded(child: _side(0)),
+          stacked ? const Divider() : const VerticalDivider(width: 1),
+          Expanded(child: _side(1)),
+        ];
+        return Column(
+          children: [
+            Expanded(
+              child: stacked ? Column(children: panes) : Row(children: panes),
+            ),
+            _Transfers(widget.ws.transfers),
+          ],
+        );
+      },
+    ),
   );
 }
 
@@ -310,6 +325,7 @@ class _Pane extends StatelessWidget {
     this.source, {
     required this.forward,
     required this.onSend,
+    required this.roomy,
   });
   final PaneController pane;
 
@@ -321,6 +337,9 @@ class _Pane extends StatelessWidget {
 
   /// Null while the other side has nothing to copy to.
   final VoidCallback? onSend;
+
+  /// Wide enough for the permission and date columns.
+  final bool roomy;
 
   Future<void> _guard(BuildContext context, Future<void> Function() op) async {
     try {
@@ -546,19 +565,21 @@ class _Pane extends StatelessWidget {
                 children: [
                   const SizedBox(width: 66),
                   Expanded(child: Text('NAME', style: head)),
-                  SizedBox(width: 44, child: Text('MODE', style: head)),
+                  if (roomy)
+                    SizedBox(width: 44, child: Text('MODE', style: head)),
                   SizedBox(
                     width: 70,
                     child: Text('SIZE', textAlign: TextAlign.end, style: head),
                   ),
-                  SizedBox(
-                    width: 104,
-                    child: Text(
-                      'MODIFIED',
-                      textAlign: TextAlign.end,
-                      style: head,
+                  if (roomy)
+                    SizedBox(
+                      width: 104,
+                      child: Text(
+                        'MODIFIED',
+                        textAlign: TextAlign.end,
+                        style: head,
+                      ),
                     ),
-                  ),
                 ],
               ),
             ),
@@ -618,17 +639,18 @@ class _Pane extends StatelessWidget {
                                     style: const TextStyle(fontSize: 13),
                                   ),
                                 ),
-                                SizedBox(
-                                  width: 44,
-                                  child: Text(
-                                    e.mode == null
-                                        ? ''
-                                        : e.mode!
-                                              .toRadixString(8)
-                                              .padLeft(3, '0'),
-                                    style: small?.merge(mono),
+                                if (roomy)
+                                  SizedBox(
+                                    width: 44,
+                                    child: Text(
+                                      e.mode == null
+                                          ? ''
+                                          : e.mode!
+                                                .toRadixString(8)
+                                                .padLeft(3, '0'),
+                                      style: small?.merge(mono),
+                                    ),
                                   ),
-                                ),
                                 SizedBox(
                                   width: 70,
                                   child: Text(
@@ -637,14 +659,15 @@ class _Pane extends StatelessWidget {
                                     style: small,
                                   ),
                                 ),
-                                SizedBox(
-                                  width: 104,
-                                  child: Text(
-                                    _date(e.modified),
-                                    textAlign: TextAlign.end,
-                                    style: small,
+                                if (roomy)
+                                  SizedBox(
+                                    width: 104,
+                                    child: Text(
+                                      _date(e.modified),
+                                      textAlign: TextAlign.end,
+                                      style: small,
+                                    ),
                                   ),
-                                ),
                               ],
                             ),
                           ),

@@ -213,6 +213,63 @@ class SftpTab extends AppTab {
   }
 }
 
+enum TileAxis { row, column }
+
+enum TileSide { left, right, top, bottom }
+
+/// The arrangement of tabs on screen: a tab, or two arrangements side by
+/// side or stacked. Immutable apart from [TileSplit.ratio].
+sealed class Tile {
+  Iterable<AppTab> get tabs;
+
+  /// This arrangement with the leaf showing [tab] replaced by [by].
+  Tile swap(AppTab tab, Tile by);
+
+  /// This arrangement without [tab]; its neighbour takes the freed space.
+  /// Null when nothing is left.
+  Tile? without(AppTab tab);
+}
+
+class TileLeaf extends Tile {
+  TileLeaf(this.tab);
+  final AppTab tab;
+
+  @override
+  Iterable<AppTab> get tabs => [tab];
+
+  @override
+  Tile swap(AppTab tab, Tile by) => tab == this.tab ? by : this;
+
+  @override
+  Tile? without(AppTab tab) => tab == this.tab ? null : this;
+}
+
+class TileSplit extends Tile {
+  TileSplit(this.axis, this.first, this.second, [this.ratio = .5]);
+  final TileAxis axis;
+  final Tile first;
+  final Tile second;
+
+  /// Share of the space given to [first]; changed by dragging the divider.
+  double ratio;
+
+  @override
+  Iterable<AppTab> get tabs => [...first.tabs, ...second.tabs];
+
+  @override
+  Tile swap(AppTab tab, Tile by) =>
+      TileSplit(axis, first.swap(tab, by), second.swap(tab, by), ratio);
+
+  @override
+  Tile? without(AppTab tab) {
+    final a = first.without(tab);
+    final b = second.without(tab);
+    if (a == null) return b;
+    if (b == null) return a;
+    return TileSplit(axis, a, b, ratio);
+  }
+}
+
 enum Section { hosts, keychain, forwards, snippets, knownHosts, settings }
 
 /// Everything that lives while a vault is unlocked: open tabs, running
@@ -230,7 +287,16 @@ class Workspace extends ChangeNotifier {
   final List<AppTab> tabs = [];
 
   Section section = Section.hosts;
+
+  /// The tab with keyboard focus, or null while a section page is showing.
   AppTab? active;
+
+  /// How the visible tabs are tiled; null until a tab has been shown. It is
+  /// kept while a section page is showing so coming back restores the split.
+  Tile? layout;
+
+  /// The tabs on screen in [layout], left to right, top to bottom.
+  List<AppTab> get tiled => [...?layout?.tabs];
 
   void show(Section s) {
     section = s;
@@ -238,15 +304,55 @@ class Workspace extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// Gives [tab] focus. A tab that is not on screen takes the place of the
+  /// one that had focus, so a split keeps its shape.
   void focus(AppTab tab) {
+    if (!tiled.contains(tab)) {
+      final replace = tiled.contains(active) ? active : tiled.firstOrNull;
+      layout = replace == null
+          ? TileLeaf(tab)
+          : layout!.swap(replace, TileLeaf(tab));
+    }
     active = tab;
+    notifyListeners();
+  }
+
+  /// Places [tab] beside [target], on the given [side] of it, splitting the
+  /// space [target] had.
+  void split(AppTab target, AppTab tab, TileSide side) {
+    if (tab == target || !tabs.contains(tab) || !tiled.contains(target)) return;
+    // Lift the tab out of wherever it was first; the target is still there.
+    layout = layout!.without(tab);
+    final moved = TileLeaf(tab);
+    final before = side == TileSide.left || side == TileSide.top;
+    layout = layout!.swap(
+      target,
+      TileSplit(
+        side == TileSide.left || side == TileSide.right
+            ? TileAxis.row
+            : TileAxis.column,
+        before ? moved : TileLeaf(target),
+        before ? TileLeaf(target) : moved,
+      ),
+    );
+    active = tab;
+    notifyListeners();
+  }
+
+  /// Call after changing a [TileSplit.ratio] so the screen follows.
+  void retile() => notifyListeners();
+
+  /// Takes [tab] out of the split, leaving it open in the tab strip.
+  void untile(AppTab tab) {
+    if (tiled.length < 2 || !tiled.contains(tab)) return;
+    layout = layout!.without(tab);
+    if (active == tab) active = tiled.first;
     notifyListeners();
   }
 
   void _open(AppTab tab) {
     tabs.add(tab);
-    active = tab;
-    notifyListeners();
+    focus(tab);
     tab.start();
   }
 
@@ -257,9 +363,13 @@ class Workspace extends ChangeNotifier {
     final i = tabs.indexOf(tab);
     if (i < 0) return;
     tabs.removeAt(i);
-    if (active == tab) {
-      active = tabs.isEmpty ? null : tabs[i.clamp(0, tabs.length - 1)];
+    final wasTiled = tiled.contains(tab);
+    layout = layout?.without(tab);
+    if (wasTiled && layout == null && tabs.isNotEmpty) {
+      // The only tile closed: show the neighbouring tab in its place.
+      layout = TileLeaf(tabs[i.clamp(0, tabs.length - 1)]);
     }
+    if (active == tab) active = tiled.firstOrNull;
     tab.dispose();
     notifyListeners();
   }
@@ -269,6 +379,8 @@ class Workspace extends ChangeNotifier {
       t.dispose();
     }
     tabs.clear();
+    layout = null;
+    active = null;
     await forwards.stopAll();
     DeviceKeys.lock();
     await vault.lock();

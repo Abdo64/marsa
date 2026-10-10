@@ -69,7 +69,6 @@ class AppShell extends StatelessWidget {
     builder: (context, _) {
       final ws = workspace;
       final compact = MediaQuery.sizeOf(context).width < 820;
-      final index = ws.active == null ? 0 : 1 + ws.tabs.indexOf(ws.active!);
       return Scaffold(
         body: SafeArea(
           child: Row(
@@ -82,21 +81,8 @@ class AppShell extends StatelessWidget {
                     if (ws.tabs.isNotEmpty) _TabStrip(ws),
                     Expanded(
                       child: IndexedStack(
-                        index: index,
-                        children: [
-                          _page(),
-                          for (final tab in ws.tabs)
-                            KeyedSubtree(
-                              key: ObjectKey(tab),
-                              child: tab is TerminalTab
-                                  ? TerminalTabView(
-                                      tab,
-                                      settings,
-                                      visible: tab == ws.active,
-                                    )
-                                  : SftpTabView(ws, tab as SftpTab),
-                            ),
-                        ],
+                        index: ws.active == null ? 0 : 1,
+                        children: [_page(), _Tiles(ws, settings)],
                       ),
                     ),
                   ],
@@ -110,16 +96,334 @@ class AppShell extends StatelessWidget {
   );
 }
 
-/// Open sessions as tabs across the top, with the active tab's actions on
-/// the right.
+/// The tab views. Tabs in the layout are tiled on screen; the rest are kept
+/// alive out of sight, so an SFTP tab still knows its folders when it comes
+/// back. Global keys let a view move between tiles without being rebuilt.
+class _Tiles extends StatelessWidget {
+  const _Tiles(this.ws, this.settings);
+  final Workspace ws;
+  final AppSettings settings;
+
+  Widget _view(AppTab tab) => KeyedSubtree(
+    key: GlobalObjectKey(tab),
+    child: tab is TerminalTab
+        ? TerminalTabView(tab, settings, visible: tab == ws.active)
+        : SftpTabView(ws, tab as SftpTab),
+  );
+
+  Widget _node(BuildContext context, Tile tile, bool many) {
+    if (tile is TileLeaf) {
+      return _TilePane(ws, tile.tab, framed: many, child: _view(tile.tab));
+    }
+    final split = tile as TileSplit;
+    final row = split.axis == TileAxis.row;
+    final scheme = Theme.of(context).colorScheme;
+    return LayoutBuilder(
+      builder: (context, box) {
+        const bar = 5.0;
+        final total = (row ? box.maxWidth : box.maxHeight) - bar;
+        final first = total * split.ratio;
+        return Flex(
+          direction: row ? Axis.horizontal : Axis.vertical,
+          children: [
+            SizedBox(
+              width: row ? first : null,
+              height: row ? null : first,
+              child: _node(context, split.first, true),
+            ),
+            MouseRegion(
+              cursor: row
+                  ? SystemMouseCursors.resizeColumn
+                  : SystemMouseCursors.resizeRow,
+              child: GestureDetector(
+                behavior: HitTestBehavior.opaque,
+                onPanUpdate: (d) {
+                  final moved = row ? d.delta.dx : d.delta.dy;
+                  split.ratio = (split.ratio + moved / total).clamp(.15, .85);
+                  ws.retile();
+                },
+                child: Container(
+                  width: row ? bar : null,
+                  height: row ? null : bar,
+                  color: scheme.outlineVariant,
+                ),
+              ),
+            ),
+            Expanded(child: _node(context, split.second, true)),
+          ],
+        );
+      },
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final shown = ws.tiled;
+    return Stack(
+      children: [
+        Offstage(
+          child: Stack(
+            children: [
+              for (final tab in ws.tabs)
+                if (!shown.contains(tab)) _view(tab),
+            ],
+          ),
+        ),
+        if (ws.layout != null) _node(context, ws.layout!, shown.length > 1),
+      ],
+    );
+  }
+}
+
+/// One tile: a tab's view, a slim title bar when several tiles share the
+/// screen, and the drop zones that split it when a tab is dragged over.
+class _TilePane extends StatefulWidget {
+  const _TilePane(
+    this.ws,
+    this.tab, {
+    required this.framed,
+    required this.child,
+  });
+  final Workspace ws;
+  final AppTab tab;
+  final bool framed;
+  final Widget child;
+
+  @override
+  State<_TilePane> createState() => _TilePaneState();
+}
+
+class _TilePaneState extends State<_TilePane> {
+  TileSide? _zone;
+
+  // The edge of this tile the pointer is nearest to.
+  TileSide _sideAt(Offset global) {
+    final box = context.findRenderObject()! as RenderBox;
+    final p = box.globalToLocal(global);
+    final x = (p.dx / box.size.width).clamp(0.0, 1.0);
+    final y = (p.dy / box.size.height).clamp(0.0, 1.0);
+    final nearest = {
+      TileSide.left: x,
+      TileSide.right: 1 - x,
+      TileSide.top: y,
+      TileSide.bottom: 1 - y,
+    }.entries.reduce((a, b) => a.value <= b.value ? a : b);
+    return nearest.key;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final ws = widget.ws;
+    final tab = widget.tab;
+    final t = Theme.of(context);
+    final scheme = t.colorScheme;
+    final focused = ws.active == tab;
+    return DragTarget<AppTab>(
+      onWillAcceptWithDetails: (d) => d.data != tab,
+      onMove: (d) {
+        final zone = _sideAt(d.offset);
+        if (zone != _zone) setState(() => _zone = zone);
+      },
+      onLeave: (_) => setState(() => _zone = null),
+      onAcceptWithDetails: (d) {
+        final zone = _zone ?? _sideAt(d.offset);
+        setState(() => _zone = null);
+        ws.split(tab, d.data, zone);
+      },
+      builder: (context, candidates, _) => Stack(
+        children: [
+          Listener(
+            // Clicking anywhere in a tile gives it the keyboard.
+            onPointerDown: (_) {
+              if (!focused) ws.focus(tab);
+            },
+            child: Column(
+              children: [
+                if (widget.framed)
+                  Draggable<AppTab>(
+                    data: tab,
+                    dragAnchorStrategy: pointerDragAnchorStrategy,
+                    feedback: _DragChip(tab),
+                    child: Container(
+                      height: 26,
+                      padding: const EdgeInsets.only(left: 10, right: 2),
+                      decoration: BoxDecoration(
+                        color: focused
+                            ? scheme.surfaceContainerHigh
+                            : scheme.surfaceContainerLow,
+                        border: Border(
+                          top: BorderSide(
+                            width: 2,
+                            color: focused
+                                ? scheme.primary
+                                : Colors.transparent,
+                          ),
+                        ),
+                      ),
+                      child: Row(
+                        children: [
+                          Icon(
+                            tab is TerminalTab
+                                ? Icons.terminal
+                                : Icons.folder_copy_outlined,
+                            size: 13,
+                          ),
+                          const SizedBox(width: 7),
+                          Expanded(
+                            child: Text(
+                              tab.host.title,
+                              overflow: TextOverflow.ellipsis,
+                              style: t.textTheme.labelMedium?.copyWith(
+                                color: focused
+                                    ? scheme.onSurface
+                                    : Palette.of(context).muted,
+                              ),
+                            ),
+                          ),
+                          _MiniButton(
+                            'Take out of the split',
+                            Icons.close_fullscreen,
+                            () => ws.untile(tab),
+                          ),
+                          _MiniButton(
+                            'Close',
+                            Icons.close,
+                            () => ws.closeTab(tab),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                Expanded(child: widget.child),
+              ],
+            ),
+          ),
+          if (candidates.isNotEmpty && _zone != null)
+            Positioned.fill(
+              child: IgnorePointer(
+                child: FractionallySizedBox(
+                  alignment: switch (_zone!) {
+                    TileSide.left => Alignment.centerLeft,
+                    TileSide.right => Alignment.centerRight,
+                    TileSide.top => Alignment.topCenter,
+                    TileSide.bottom => Alignment.bottomCenter,
+                  },
+                  widthFactor: _zone == TileSide.left || _zone == TileSide.right
+                      ? .5
+                      : 1,
+                  heightFactor:
+                      _zone == TileSide.top || _zone == TileSide.bottom
+                      ? .5
+                      : 1,
+                  child: Container(
+                    decoration: BoxDecoration(
+                      color: scheme.primary.withValues(alpha: .18),
+                      border: Border.all(color: scheme.primary, width: 2),
+                    ),
+                  ),
+                ),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+}
+
+class _MiniButton extends StatelessWidget {
+  const _MiniButton(this.tip, this.icon, this.onTap);
+  final String tip;
+  final IconData icon;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) => Tooltip(
+    message: tip,
+    child: InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(5),
+      child: Padding(
+        padding: const EdgeInsets.all(4),
+        child: Icon(icon, size: 13),
+      ),
+    ),
+  );
+}
+
+/// What follows the pointer while a tab is being dragged.
+class _DragChip extends StatelessWidget {
+  const _DragChip(this.tab);
+  final AppTab tab;
+
+  @override
+  Widget build(BuildContext context) {
+    final t = Theme.of(context);
+    return Material(
+      elevation: 6,
+      color: t.colorScheme.surfaceContainerHigh,
+      borderRadius: BorderRadius.circular(8),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(
+              tab is TerminalTab ? Icons.terminal : Icons.folder_copy_outlined,
+              size: 15,
+            ),
+            const SizedBox(width: 8),
+            Text(tab.host.title, style: t.textTheme.labelLarge),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// Open sessions as tabs across the top, with the focused tab's actions on
+/// the right. Drag a tab onto the area below to tile it beside another.
 class _TabStrip extends StatelessWidget {
   const _TabStrip(this.ws);
   final Workspace ws;
+
+  Future<void> _menu(BuildContext context, AppTab tab, Offset at) async {
+    final target = ws.active != null && ws.active != tab
+        ? ws.active
+        : ws.tiled.where((x) => x != tab).firstOrNull;
+    final tiled = ws.tiled.contains(tab);
+    final action = await showMenu<VoidCallback>(
+      context: context,
+      position: RelativeRect.fromLTRB(at.dx, at.dy, at.dx, at.dy),
+      items: [
+        if (target != null) ...[
+          PopupMenuItem(
+            value: () => ws.split(target, tab, TileSide.right),
+            child: Text('Show beside ${target.host.title}'),
+          ),
+          PopupMenuItem(
+            value: () => ws.split(target, tab, TileSide.bottom),
+            child: Text('Show below ${target.host.title}'),
+          ),
+        ],
+        if (tiled && ws.tiled.length > 1)
+          PopupMenuItem(
+            value: () => ws.untile(tab),
+            child: const Text('Take out of the split'),
+          ),
+        PopupMenuItem(
+          value: () => ws.closeTab(tab),
+          child: const Text('Close'),
+        ),
+      ],
+    );
+    action?.call();
+  }
 
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
     final active = ws.active;
+    final tiled = ws.tiled;
     final snippets = ws.vault.data.snippets.all.toList()
       ..sort((a, b) => a.label.compareTo(b.label));
     return Container(
@@ -137,11 +441,21 @@ class _TabStrip extends StatelessWidget {
                 for (final tab in ws.tabs)
                   ListenableBuilder(
                     listenable: tab,
-                    builder: (context, _) => _Tab(
-                      tab: tab,
-                      selected: tab == active,
-                      onTap: () => ws.focus(tab),
-                      onClose: () => ws.closeTab(tab),
+                    builder: (context, _) => GestureDetector(
+                      onSecondaryTapUp: (d) =>
+                          _menu(context, tab, d.globalPosition),
+                      child: Draggable<AppTab>(
+                        data: tab,
+                        dragAnchorStrategy: pointerDragAnchorStrategy,
+                        feedback: _DragChip(tab),
+                        child: _Tab(
+                          tab: tab,
+                          selected: tab == active,
+                          onScreen: active != null && tiled.contains(tab),
+                          onTap: () => ws.focus(tab),
+                          onClose: () => ws.closeTab(tab),
+                        ),
+                      ),
                     ),
                   ),
               ],
@@ -190,11 +504,15 @@ class _Tab extends StatelessWidget {
   const _Tab({
     required this.tab,
     required this.selected,
+    required this.onScreen,
     required this.onTap,
     required this.onClose,
   });
   final AppTab tab;
   final bool selected;
+
+  /// Visible in the current split, focused or not.
+  final bool onScreen;
   final VoidCallback onTap;
   final VoidCallback onClose;
 
@@ -202,14 +520,14 @@ class _Tab extends StatelessWidget {
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
     final palette = Palette.of(context);
-    final fg = selected ? scheme.onSurface : palette.muted;
+    final fg = onScreen ? scheme.onSurface : palette.muted;
     return InkWell(
       onTap: onTap,
       child: Container(
         constraints: const BoxConstraints(minWidth: 130, maxWidth: 220),
         padding: const EdgeInsets.only(left: 12, right: 6),
         decoration: BoxDecoration(
-          color: selected ? scheme.surface : null,
+          color: onScreen ? scheme.surface : null,
           border: Border(
             top: BorderSide(
               width: 2,

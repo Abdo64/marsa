@@ -26,6 +26,36 @@ class _HostsPageState extends State<HostsPage> {
   /// The group picked in the groups panel; null shows every host.
   String? _group;
 
+  /// The tag picked in the groups panel, if any.
+  String? _tag;
+
+  Future<void> _moveTo(Host h, String group) async {
+    if (h.group == group) return;
+    h.group = group;
+    _data.hosts.put(h);
+    await widget.ws.vault.commit();
+  }
+
+  /// Asks which group [h] belongs in: an existing one or a new name.
+  Future<void> _askGroup(Host h) async {
+    final existing = {
+      for (final x in _data.hosts.all)
+        if (x.group.isNotEmpty) x.group,
+    }.toList()..sort();
+    final r = await promptFields(
+      context,
+      'Move ${h.title} to a group',
+      message: existing.isEmpty
+          ? 'Type a name to create the first group.'
+          : 'Type a new name, or one of: ${existing.join(', ')}. Leave it '
+                'empty to take the host out of its group.',
+      labels: ['Group'],
+      initial: [h.group],
+      action: 'Move',
+    );
+    if (r != null) await _moveTo(h, r.first.trim());
+  }
+
   VaultData get _data => widget.ws.vault.data;
 
   Future<void> _edit([Host? host]) async {
@@ -241,8 +271,16 @@ class _HostsPageState extends State<HostsPage> {
       counts[h.group] = (counts[h.group] ?? 0) + 1;
     }
     final total = hosts.length;
+    final tagCounts = <String, int>{};
+    for (final h in hosts) {
+      for (final tag in h.tags) {
+        tagCounts[tag] = (tagCounts[tag] ?? 0) + 1;
+      }
+    }
     final group = counts.containsKey(_group) ? _group : null;
+    final tag = tagCounts.containsKey(_tag) ? _tag : null;
     if (group != null) hosts.removeWhere((h) => h.group != group);
+    if (tag != null) hosts.removeWhere((h) => !h.tags.contains(tag));
     final groups = <String, List<Host>>{};
     for (final h in hosts) {
       groups.putIfAbsent(h.group, () => []).add(h);
@@ -322,9 +360,19 @@ class _HostsPageState extends State<HostsPage> {
         Expanded(
           child: _GroupsLayout(
             counts: counts,
+            tags: tagCounts,
             total: total,
             selected: group,
-            onSelect: (g) => setState(() => _group = g),
+            selectedTag: tag,
+            onSelect: (g) => setState(() {
+              _group = g;
+              _tag = null;
+            }),
+            onSelectTag: (t) => setState(() {
+              _tag = t == _tag ? null : t;
+              _group = null;
+            }),
+            onDrop: _moveTo,
             child: hosts.isEmpty
                 ? (quick != null
                       ? const SizedBox.shrink()
@@ -393,6 +441,7 @@ class _HostsPageState extends State<HostsPage> {
                                 onConnect: () => widget.ws.openTerminal(h),
                                 onSftp: () => widget.ws.openSftp(h),
                                 onEdit: () => _edit(h),
+                                onMove: () => _askGroup(h),
                                 onDelete: () => _delete(h),
                               );
                             },
@@ -414,87 +463,161 @@ Color groupColor(String seed) =>
         _avatarColors.length];
 
 /// Puts the groups panel beside the host list: a column on a wide window, a
-/// strip of chips on a narrow one. Hidden while no host has a group.
+/// strip of chips on a narrow one. It lists groups and tags; both filter the
+/// list, and a host card can be dropped on a group to move it there.
 class _GroupsLayout extends StatelessWidget {
   const _GroupsLayout({
     required this.counts,
+    required this.tags,
     required this.total,
     required this.selected,
+    required this.selectedTag,
     required this.onSelect,
+    required this.onSelectTag,
+    required this.onDrop,
     required this.child,
   });
   final Map<String, int> counts;
+  final Map<String, int> tags;
   final int total;
   final String? selected;
+  final String? selectedTag;
   final ValueChanged<String?> onSelect;
+  final ValueChanged<String> onSelectTag;
+  final void Function(Host host, String group) onDrop;
   final Widget child;
 
   @override
   Widget build(BuildContext context) {
     final named = counts.keys.where((g) => g.isNotEmpty).toList()
       ..sort((a, b) => a.toLowerCase().compareTo(b.toLowerCase()));
-    if (named.isEmpty) return child;
-    final entries = <(String?, String, int)>[
-      (null, 'All hosts', total),
-      for (final g in named) (g, g, counts[g]!),
-      if (counts.containsKey('')) ('', 'Ungrouped', counts['']!),
-    ];
+    final tagNames = tags.keys.toList()
+      ..sort((a, b) => a.toLowerCase().compareTo(b.toLowerCase()));
+    if (total == 0 && named.isEmpty) return child;
     final t = Theme.of(context);
     final scheme = t.colorScheme;
 
-    Widget entry((String?, String, int) e, {required bool chip}) {
-      final on = e.$1 == selected;
-      final row = Row(
-        mainAxisSize: chip ? MainAxisSize.min : MainAxisSize.max,
-        children: [
-          Container(
-            width: 8,
-            height: 8,
-            decoration: BoxDecoration(
-              shape: BoxShape.circle,
-              color: e.$1 == null
-                  ? scheme.outline
-                  : e.$1!.isEmpty
-                  ? Colors.transparent
-                  : groupColor(e.$1!),
-              border: e.$1 == '' ? Border.all(color: scheme.outline) : null,
-            ),
-          ),
-          const SizedBox(width: 10),
-          Flexible(
-            fit: chip ? FlexFit.loose : FlexFit.tight,
-            child: Text(
-              e.$2,
-              overflow: TextOverflow.ellipsis,
-              style: TextStyle(
-                fontSize: 13,
-                color: on ? scheme.onSurface : Palette.of(context).muted,
-                fontWeight: on ? FontWeight.w600 : FontWeight.w400,
-              ),
-            ),
-          ),
-          const SizedBox(width: 10),
-          Text('${e.$3}', style: t.textTheme.labelSmall),
-        ],
-      );
-      return Padding(
+    Widget entry({
+      required String label,
+      required int count,
+      required bool on,
+      required VoidCallback onTap,
+      required Widget lead,
+      required bool chip,
+      String? dropGroup,
+    }) {
+      Widget tile(bool hovering) => Padding(
         padding: chip
             ? const EdgeInsets.only(right: 6)
             : const EdgeInsets.symmetric(vertical: 1),
         child: Material(
-          color: on ? scheme.surfaceContainerHigh : Colors.transparent,
+          color: hovering
+              ? scheme.primaryContainer
+              : on
+              ? scheme.surfaceContainerHigh
+              : Colors.transparent,
           borderRadius: BorderRadius.circular(7),
           child: InkWell(
             borderRadius: BorderRadius.circular(7),
-            onTap: () => onSelect(e.$1),
+            onTap: onTap,
             child: Padding(
               padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-              child: row,
+              child: Row(
+                mainAxisSize: chip ? MainAxisSize.min : MainAxisSize.max,
+                children: [
+                  lead,
+                  const SizedBox(width: 10),
+                  Flexible(
+                    fit: chip ? FlexFit.loose : FlexFit.tight,
+                    child: Text(
+                      label,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        fontSize: 13,
+                        color: on
+                            ? scheme.onSurface
+                            : Palette.of(context).muted,
+                        fontWeight: on ? FontWeight.w600 : FontWeight.w400,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 10),
+                  Text('$count', style: t.textTheme.labelSmall),
+                ],
+              ),
             ),
           ),
         ),
       );
+      if (dropGroup == null) return tile(false);
+      return DragTarget<Host>(
+        onWillAcceptWithDetails: (d) => d.data.group != dropGroup,
+        onAcceptWithDetails: (d) => onDrop(d.data, dropGroup),
+        builder: (context, candidates, _) => tile(candidates.isNotEmpty),
+      );
     }
+
+    Widget dot(Color? fill) => Container(
+      width: 8,
+      height: 8,
+      decoration: BoxDecoration(
+        shape: BoxShape.circle,
+        color: fill,
+        border: fill == null ? Border.all(color: scheme.outline) : null,
+      ),
+    );
+
+    List<Widget> groupEntries(bool chip) => [
+      entry(
+        label: 'All hosts',
+        count: total,
+        on: selected == null && selectedTag == null,
+        onTap: () => onSelect(null),
+        lead: dot(scheme.outline),
+        chip: chip,
+      ),
+      for (final g in named)
+        entry(
+          label: g,
+          count: counts[g]!,
+          on: selected == g,
+          onTap: () => onSelect(g),
+          lead: dot(groupColor(g)),
+          chip: chip,
+          dropGroup: g,
+        ),
+      if (named.isNotEmpty && counts.containsKey(''))
+        entry(
+          label: 'Ungrouped',
+          count: counts['']!,
+          on: selected == '',
+          onTap: () => onSelect(''),
+          lead: dot(null),
+          chip: chip,
+          dropGroup: '',
+        ),
+    ];
+    List<Widget> tagEntries(bool chip) => [
+      for (final tag in tagNames)
+        entry(
+          label: tag,
+          count: tags[tag]!,
+          on: selectedTag == tag,
+          onTap: () => onSelectTag(tag),
+          lead: Icon(Icons.sell_outlined, size: 13, color: scheme.outline),
+          chip: chip,
+        ),
+    ];
+    Widget heading(String text) => Padding(
+      padding: const EdgeInsets.fromLTRB(10, 6, 0, 8),
+      child: Text(
+        text,
+        style: t.textTheme.labelSmall?.copyWith(
+          letterSpacing: .6,
+          fontWeight: FontWeight.w600,
+        ),
+      ),
+    );
 
     return LayoutBuilder(
       builder: (context, box) => box.maxWidth >= 720
@@ -506,17 +629,26 @@ class _GroupsLayout extends StatelessWidget {
                   child: ListView(
                     padding: const EdgeInsets.fromLTRB(16, 0, 8, 16),
                     children: [
-                      Padding(
-                        padding: const EdgeInsets.fromLTRB(10, 6, 0, 8),
-                        child: Text(
-                          'GROUPS',
-                          style: t.textTheme.labelSmall?.copyWith(
-                            letterSpacing: .6,
-                            fontWeight: FontWeight.w600,
+                      heading('GROUPS'),
+                      ...groupEntries(false),
+                      if (named.isEmpty)
+                        Padding(
+                          padding: const EdgeInsets.fromLTRB(10, 8, 6, 0),
+                          child: Text(
+                            'No groups yet. Use "Move to group…" in a '
+                            'host\'s ⋮ menu to start one, then drag hosts '
+                            'onto it.',
+                            style: t.textTheme.labelSmall?.copyWith(
+                              fontWeight: FontWeight.w400,
+                              height: 1.4,
+                            ),
                           ),
                         ),
-                      ),
-                      for (final e in entries) entry(e, chip: false),
+                      if (tagNames.isNotEmpty) ...[
+                        const SizedBox(height: 14),
+                        heading('TAGS'),
+                        ...tagEntries(false),
+                      ],
                     ],
                   ),
                 ),
@@ -532,7 +664,7 @@ class _GroupsLayout extends StatelessWidget {
                   child: ListView(
                     scrollDirection: Axis.horizontal,
                     padding: const EdgeInsets.fromLTRB(24, 0, 18, 6),
-                    children: [for (final e in entries) entry(e, chip: true)],
+                    children: [...groupEntries(true), ...tagEntries(true)],
                   ),
                 ),
                 Expanded(child: child),
@@ -558,11 +690,12 @@ class _HostCard extends StatelessWidget {
     required this.onConnect,
     required this.onSftp,
     required this.onEdit,
+    required this.onMove,
     required this.onDelete,
   });
   final Host host;
   final String subtitle;
-  final VoidCallback onConnect, onSftp, onEdit, onDelete;
+  final VoidCallback onConnect, onSftp, onEdit, onMove, onDelete;
 
   @override
   Widget build(BuildContext context) {
@@ -570,6 +703,29 @@ class _HostCard extends StatelessWidget {
     final scheme = t.colorScheme;
     // Hosts in the same group share a colour, so groups read at a glance.
     final color = groupColor(host.group.isEmpty ? host.title : host.group);
+    // Draggable onto a group in the groups panel.
+    return Draggable<Host>(
+      data: host,
+      dragAnchorStrategy: pointerDragAnchorStrategy,
+      feedback: Material(
+        elevation: 6,
+        color: scheme.surfaceContainerHigh,
+        borderRadius: BorderRadius.circular(8),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+          child: Text(host.title, style: t.textTheme.titleSmall),
+        ),
+      ),
+      child: _card(context, t, scheme, color),
+    );
+  }
+
+  Widget _card(
+    BuildContext context,
+    ThemeData t,
+    ColorScheme scheme,
+    Color color,
+  ) {
     return Card(
       clipBehavior: Clip.antiAlias,
       child: InkWell(
@@ -654,6 +810,10 @@ class _HostCard extends StatelessWidget {
                 onSelected: (f) => f(),
                 itemBuilder: (_) => [
                   PopupMenuItem(value: onEdit, child: const Text('Edit')),
+                  PopupMenuItem(
+                    value: onMove,
+                    child: const Text('Move to group…'),
+                  ),
                   PopupMenuItem(value: onDelete, child: const Text('Delete')),
                 ],
               ),

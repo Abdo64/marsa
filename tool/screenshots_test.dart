@@ -270,6 +270,29 @@ void main() {
     await tester.pump(const Duration(milliseconds: 300));
     await tester.pump(const Duration(milliseconds: 300));
     await shot('sftp-$suffix');
+
+    // Tiled: two terminals side by side with the file view under them.
+    final term2 = TerminalTab(
+      d.hosts.all.firstWhere((h) => h.label == 'db-primary'),
+      vault,
+      ws.ui,
+    )..state = TabState.connected;
+    term2.terminal.write(
+      '\x1b[1;32mdeploy@db-primary\x1b[0m:\x1b[1;34m~\x1b[0m\$ pg_lsclusters\r\n'
+      'Ver Cluster Port Status Owner    Data directory\r\n'
+      '16  main    5432 \x1b[32monline\x1b[0m postgres /var/lib/postgresql/16/main\r\n'
+      '\x1b[1;32mdeploy@db-primary\x1b[0m:\x1b[1;34m~\x1b[0m\$ ',
+    );
+    ws.tabs.add(term2);
+    ws.focus(term);
+    ws.split(term, term2, TileSide.right);
+    ws.split(term, sftp, TileSide.bottom);
+    (ws.layout! as TileSplit).ratio = .5;
+    ws.focus(term2);
+    await tester.pump(const Duration(milliseconds: 300));
+    await tester.pump(const Duration(milliseconds: 300));
+    await shot('tiles-$suffix');
+    ws.closeTab(term2);
     ws.closeTab(sftp);
     ws.closeTab(term);
     await tester.pumpAndSettle();

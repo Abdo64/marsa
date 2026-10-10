@@ -148,6 +148,40 @@ Match host foo
     ws.focus(sftp);
     await tester.pump(const Duration(milliseconds: 100));
     expect(find.text('Reconnect'), findsWidgets);
+
+    // Drag the second tab onto the right half of the first: a side-by-side
+    // split. Then onto the bottom edge of the terminal: stacked under it.
+    Future<void> dragTab(int index, Offset to) async {
+      final from = tester.getCenter(find.byType(Draggable<AppTab>).at(index));
+      final gesture = await tester.startGesture(from);
+      await tester.pump(const Duration(milliseconds: 50));
+      for (var i = 1; i <= 5; i++) {
+        await gesture.moveTo(Offset.lerp(from, to, i / 5)!);
+        await tester.pump(const Duration(milliseconds: 30));
+      }
+      await gesture.up();
+      await tester.pump(const Duration(milliseconds: 100));
+    }
+
+    ws.focus(term);
+    await tester.pump(const Duration(milliseconds: 100));
+    expect(ws.tiled, [term]);
+    final area = tester.getRect(find.byType(IndexedStack));
+    await dragTab(1, Offset(area.right - 20, area.center.dy));
+    expect(ws.tiled, [term, sftp]);
+    expect((ws.layout! as TileSplit).axis, TileAxis.row);
+    expect(find.byTooltip('Take out of the split'), findsNWidgets(2));
+
+    // Now two tiles are on screen; drop the sftp tab on the terminal tile's
+    // bottom edge instead.
+    final left = Offset(area.left + area.width * .2, area.bottom - 15);
+    await dragTab(1, left);
+    expect(ws.tiled, [term, sftp]);
+    expect((ws.layout! as TileSplit).axis, TileAxis.column);
+
+    await tester.tap(find.byTooltip('Take out of the split').last);
+    await tester.pump(const Duration(milliseconds: 100));
+    expect(ws.tiled, [term]);
     ws.closeTab(sftp);
     ws.closeTab(term);
     await tester.pumpAndSettle();
