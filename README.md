@@ -83,7 +83,8 @@ No compiling needed. These links always point at the latest release:
 
 All versions are on the [Releases page](https://github.com/AdnanBolifa/marsa/releases).
 
-The builds are not code-signed yet, so the first launch needs one extra click:
+The builds are not code-signed yet ([how to enable it](docs/signing.md)), so
+the first launch needs one extra click:
 
 - **macOS:** right-click Marsa in Applications and choose *Open*, then *Open*
   again. (If macOS says the app is damaged, run
