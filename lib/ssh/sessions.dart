@@ -291,12 +291,26 @@ class Workspace extends ChangeNotifier {
   /// The tab with keyboard focus, or null while a section page is showing.
   AppTab? active;
 
-  /// How the visible tabs are tiled; null until a tab has been shown. It is
+  /// What the tab strip lists: each entry is one tab, or a split holding
+  /// several. Every open tab is in exactly one of them.
+  final List<Tile> pages = [];
+
+  /// The entry of [pages] on screen; null until a tab has been opened. It is
   /// kept while a section page is showing so coming back restores the split.
   Tile? layout;
 
   /// The tabs on screen in [layout], left to right, top to bottom.
   List<AppTab> get tiled => [...?layout?.tabs];
+
+  Tile? _pageOf(AppTab tab) =>
+      pages.where((p) => p.tabs.contains(tab)).firstOrNull;
+
+  // Arrangements are immutable, so changing one means replacing it.
+  void _swapPage(Tile old, Tile? by) {
+    final i = pages.indexOf(old);
+    by == null ? pages.removeAt(i) : pages[i] = by;
+    if (layout == old) layout = by;
+  }
 
   void show(Section s) {
     section = s;
@@ -304,28 +318,34 @@ class Workspace extends ChangeNotifier {
     notifyListeners();
   }
 
-  /// Gives [tab] focus. A tab that is not on screen takes the place of the
-  /// one that had focus, so a split keeps its shape.
+  /// Gives [tab] focus, bringing the split it lives in on screen.
   void focus(AppTab tab) {
-    if (!tiled.contains(tab)) {
-      final replace = tiled.contains(active) ? active : tiled.firstOrNull;
-      layout = replace == null
-          ? TileLeaf(tab)
-          : layout!.swap(replace, TileLeaf(tab));
-    }
+    final page = _pageOf(tab);
+    if (page == null) return;
+    layout = page;
     active = tab;
     notifyListeners();
   }
 
+  /// Brings [page] on screen, focusing its first tab unless one of its tabs
+  /// already has focus.
+  void open(Tile page) {
+    if (!pages.contains(page)) return;
+    layout = page;
+    if (!page.tabs.contains(active)) active = page.tabs.first;
+    notifyListeners();
+  }
+
   /// Places [tab] beside [target], on the given [side] of it, splitting the
-  /// space [target] had.
+  /// space [target] had. The tab leaves wherever it was before.
   void split(AppTab target, AppTab tab, TileSide side) {
-    if (tab == target || !tabs.contains(tab) || !tiled.contains(target)) return;
-    // Lift the tab out of wherever it was first; the target is still there.
-    layout = layout!.without(tab);
+    final from = _pageOf(tab);
+    if (tab == target || from == null || _pageOf(target) == null) return;
+    _swapPage(from, from.without(tab));
+    final page = _pageOf(target)!;
     final moved = TileLeaf(tab);
     final before = side == TileSide.left || side == TileSide.top;
-    layout = layout!.swap(
+    final next = page.swap(
       target,
       TileSplit(
         side == TileSide.left || side == TileSide.right
@@ -335,6 +355,8 @@ class Workspace extends ChangeNotifier {
         before ? TileLeaf(target) : moved,
       ),
     );
+    _swapPage(page, next);
+    layout = next;
     active = tab;
     notifyListeners();
   }
@@ -342,16 +364,41 @@ class Workspace extends ChangeNotifier {
   /// Call after changing a [TileSplit.ratio] so the screen follows.
   void retile() => notifyListeners();
 
-  /// Takes [tab] out of the split, leaving it open in the tab strip.
+  /// Takes [tab] out of its split and back into the tab strip on its own.
   void untile(AppTab tab) {
-    if (tiled.length < 2 || !tiled.contains(tab)) return;
-    layout = layout!.without(tab);
-    if (active == tab) active = tiled.first;
+    final page = _pageOf(tab);
+    if (page == null || page is TileLeaf) return;
+    final rest = page.without(tab)!;
+    _swapPage(page, rest);
+    pages.insert(pages.indexOf(rest) + 1, TileLeaf(tab));
+    if (active == tab) active = rest.tabs.first;
     notifyListeners();
   }
 
-  void _open(AppTab tab) {
+  /// Breaks the split [page] up into one tab strip entry per tab.
+  void separate(Tile page) {
+    final i = pages.indexOf(page);
+    if (i < 0 || page is TileLeaf) return;
+    final leaves = [for (final t in page.tabs) TileLeaf(t)];
+    pages.replaceRange(i, i + 1, leaves);
+    if (layout == page) {
+      layout = leaves.firstWhere(
+        (l) => l.tab == active,
+        orElse: () => leaves.first,
+      );
+      if (active != null) active = (layout! as TileLeaf).tab;
+    }
+    notifyListeners();
+  }
+
+  /// Adds [tab] as its own entry in the tab strip.
+  void add(AppTab tab) {
     tabs.add(tab);
+    pages.add(TileLeaf(tab));
+  }
+
+  void _open(AppTab tab) {
+    add(tab);
     focus(tab);
     tab.start();
   }
@@ -360,14 +407,14 @@ class Workspace extends ChangeNotifier {
   void openSftp(Host h) => _open(SftpTab(h, vault, ui, local: localFiles));
 
   void closeTab(AppTab tab) {
-    final i = tabs.indexOf(tab);
-    if (i < 0) return;
-    tabs.removeAt(i);
-    final wasTiled = tiled.contains(tab);
-    layout = layout?.without(tab);
-    if (wasTiled && layout == null && tabs.isNotEmpty) {
-      // The only tile closed: show the neighbouring tab in its place.
-      layout = TileLeaf(tabs[i.clamp(0, tabs.length - 1)]);
+    final page = _pageOf(tab);
+    if (page == null) return;
+    final i = pages.indexOf(page);
+    tabs.remove(tab);
+    _swapPage(page, page.without(tab));
+    if (layout == null && pages.isNotEmpty) {
+      // The entry on screen closed: show its neighbour instead.
+      layout = pages[i.clamp(0, pages.length - 1)];
     }
     if (active == tab) active = tiled.firstOrNull;
     tab.dispose();
@@ -379,6 +426,7 @@ class Workspace extends ChangeNotifier {
       t.dispose();
     }
     tabs.clear();
+    pages.clear();
     layout = null;
     active = null;
     await forwards.stopAll();

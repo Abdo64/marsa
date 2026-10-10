@@ -96,7 +96,7 @@ class AppShell extends StatelessWidget {
   );
 }
 
-/// The tab views. Tabs in the layout are tiled on screen; the rest are kept
+/// The tab views. Tabs in the entry on screen are tiled; the rest are kept
 /// alive out of sight, so an SFTP tab still knows its folders when it comes
 /// back. Global keys let a view move between tiles without being rebuilt.
 class _Tiles extends StatelessWidget {
@@ -281,8 +281,8 @@ class _TilePaneState extends State<_TilePane> {
                             ),
                           ),
                           _MiniButton(
-                            'Take out of the split',
-                            Icons.close_fullscreen,
+                            'Move back to its own tab',
+                            Icons.open_in_new,
                             () => ws.untile(tab),
                           ),
                           _MiniButton(
@@ -386,44 +386,54 @@ class _TabStrip extends StatelessWidget {
   const _TabStrip(this.ws);
   final Workspace ws;
 
-  Future<void> _menu(BuildContext context, AppTab tab, Offset at) async {
-    final target = ws.active != null && ws.active != tab
-        ? ws.active
-        : ws.tiled.where((x) => x != tab).firstOrNull;
-    final tiled = ws.tiled.contains(tab);
+  Future<void> _pick(
+    BuildContext context,
+    Offset at,
+    List<PopupMenuEntry<VoidCallback>> items,
+  ) async {
     final action = await showMenu<VoidCallback>(
       context: context,
       position: RelativeRect.fromLTRB(at.dx, at.dy, at.dx, at.dy),
-      items: [
-        if (target != null) ...[
-          PopupMenuItem(
-            value: () => ws.split(target, tab, TileSide.right),
-            child: Text('Show beside ${target.host.title}'),
-          ),
-          PopupMenuItem(
-            value: () => ws.split(target, tab, TileSide.bottom),
-            child: Text('Show below ${target.host.title}'),
-          ),
-        ],
-        if (tiled && ws.tiled.length > 1)
-          PopupMenuItem(
-            value: () => ws.untile(tab),
-            child: const Text('Take out of the split'),
-          ),
-        PopupMenuItem(
-          value: () => ws.closeTab(tab),
-          child: const Text('Close'),
-        ),
-      ],
+      items: items,
     );
     action?.call();
   }
+
+  Future<void> _menu(BuildContext context, AppTab tab, Offset at) {
+    final target = ws.active != null && ws.active != tab
+        ? ws.active
+        : ws.tiled.where((x) => x != tab).firstOrNull;
+    return _pick(context, at, [
+      if (target != null) ...[
+        PopupMenuItem(
+          value: () => ws.split(target, tab, TileSide.right),
+          child: Text('Show beside ${target.host.title}'),
+        ),
+        PopupMenuItem(
+          value: () => ws.split(target, tab, TileSide.bottom),
+          child: Text('Show below ${target.host.title}'),
+        ),
+      ],
+      PopupMenuItem(value: () => ws.closeTab(tab), child: const Text('Close')),
+    ]);
+  }
+
+  Future<void> _splitMenu(BuildContext context, Tile page, Offset at) =>
+      _pick(context, at, [
+        PopupMenuItem(
+          value: () => ws.separate(page),
+          child: const Text('Separate into tabs'),
+        ),
+        PopupMenuItem(
+          value: () => page.tabs.toList().forEach(ws.closeTab),
+          child: Text('Close all ${page.tabs.length}'),
+        ),
+      ]);
 
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
     final active = ws.active;
-    final tiled = ws.tiled;
     final snippets = ws.vault.data.snippets.all.toList()
       ..sort((a, b) => a.label.compareTo(b.label));
     return Container(
@@ -438,26 +448,37 @@ class _TabStrip extends StatelessWidget {
             child: ListView(
               scrollDirection: Axis.horizontal,
               children: [
-                for (final tab in ws.tabs)
-                  ListenableBuilder(
-                    listenable: tab,
-                    builder: (context, _) => GestureDetector(
-                      onSecondaryTapUp: (d) =>
-                          _menu(context, tab, d.globalPosition),
-                      child: Draggable<AppTab>(
-                        data: tab,
-                        dragAnchorStrategy: pointerDragAnchorStrategy,
-                        feedback: _DragChip(tab),
-                        child: _Tab(
-                          tab: tab,
-                          selected: tab == active,
-                          onScreen: active != null && tiled.contains(tab),
-                          onTap: () => ws.focus(tab),
-                          onClose: () => ws.closeTab(tab),
+                for (final page in ws.pages)
+                  if (page is TileLeaf)
+                    ListenableBuilder(
+                      listenable: page.tab,
+                      builder: (context, _) => GestureDetector(
+                        onSecondaryTapUp: (d) =>
+                            _menu(context, page.tab, d.globalPosition),
+                        child: Draggable<AppTab>(
+                          data: page.tab,
+                          dragAnchorStrategy: pointerDragAnchorStrategy,
+                          feedback: _DragChip(page.tab),
+                          child: _Tab(
+                            tab: page.tab,
+                            selected: page.tab == active,
+                            onTap: () => ws.focus(page.tab),
+                            onClose: () => ws.closeTab(page.tab),
+                          ),
                         ),
                       ),
+                    )
+                  else
+                    GestureDetector(
+                      onSecondaryTapUp: (d) =>
+                          _splitMenu(context, page, d.globalPosition),
+                      child: _SplitTab(
+                        page: page,
+                        selected: active != null && ws.layout == page,
+                        onTap: () => ws.open(page),
+                        onSeparate: () => ws.separate(page),
+                      ),
                     ),
-                  ),
               ],
             ),
           ),
@@ -504,15 +525,11 @@ class _Tab extends StatelessWidget {
   const _Tab({
     required this.tab,
     required this.selected,
-    required this.onScreen,
     required this.onTap,
     required this.onClose,
   });
   final AppTab tab;
   final bool selected;
-
-  /// Visible in the current split, focused or not.
-  final bool onScreen;
   final VoidCallback onTap;
   final VoidCallback onClose;
 
@@ -520,14 +537,14 @@ class _Tab extends StatelessWidget {
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
     final palette = Palette.of(context);
-    final fg = onScreen ? scheme.onSurface : palette.muted;
+    final fg = selected ? scheme.onSurface : palette.muted;
     return InkWell(
       onTap: onTap,
       child: Container(
         constraints: const BoxConstraints(minWidth: 130, maxWidth: 220),
         padding: const EdgeInsets.only(left: 12, right: 6),
         decoration: BoxDecoration(
-          color: onScreen ? scheme.surface : null,
+          color: selected ? scheme.surface : null,
           border: Border(
             top: BorderSide(
               width: 2,
@@ -582,6 +599,90 @@ class _Tab extends StatelessWidget {
               ),
             ),
           ],
+        ),
+      ),
+    );
+  }
+}
+
+/// Several sessions tiled together, shown in the tab strip as one entry.
+class _SplitTab extends StatelessWidget {
+  const _SplitTab({
+    required this.page,
+    required this.selected,
+    required this.onTap,
+    required this.onSeparate,
+  });
+  final Tile page;
+  final bool selected;
+  final VoidCallback onTap;
+  final VoidCallback onSeparate;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    final fg = selected ? scheme.onSurface : Palette.of(context).muted;
+    final names = [for (final t in page.tabs) t.host.title];
+    return Tooltip(
+      message: names.join('\n'),
+      waitDuration: const Duration(milliseconds: 600),
+      child: InkWell(
+        onTap: onTap,
+        child: Container(
+          constraints: const BoxConstraints(minWidth: 130, maxWidth: 300),
+          padding: const EdgeInsets.only(left: 12, right: 6),
+          decoration: BoxDecoration(
+            color: selected ? scheme.surface : null,
+            border: Border(
+              top: BorderSide(
+                width: 2,
+                color: selected ? scheme.primary : Colors.transparent,
+              ),
+              right: BorderSide(color: scheme.outlineVariant),
+            ),
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(Icons.grid_view_outlined, size: 15, color: fg),
+              const SizedBox(width: 8),
+              Flexible(
+                child: Text(
+                  names.join('  ·  '),
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    fontSize: 12.5,
+                    color: fg,
+                    fontWeight: selected ? FontWeight.w600 : FontWeight.w400,
+                  ),
+                ),
+              ),
+              const SizedBox(width: 8),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
+                decoration: BoxDecoration(
+                  color: scheme.surfaceContainerHigh,
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Text(
+                  '${names.length}',
+                  style: TextStyle(fontSize: 11, color: fg),
+                ),
+              ),
+              const SizedBox(width: 4),
+              Tooltip(
+                message: 'Separate into tabs',
+                child: InkWell(
+                  onTap: onSeparate,
+                  borderRadius: BorderRadius.circular(5),
+                  child: Padding(
+                    padding: const EdgeInsets.all(3),
+                    child: Icon(Icons.tab_unselected, size: 14, color: fg),
+                  ),
+                ),
+              ),
+            ],
+          ),
         ),
       ),
     );

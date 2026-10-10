@@ -211,7 +211,7 @@ void main() {
     await tester.tap(find.text('Production'));
     await tester.pumpAndSettle();
     await shot('hosts-group-$suffix');
-    await tester.tap(find.text('All hosts'));
+    await tester.tap(find.text('All'));
     await tester.pumpAndSettle();
 
     await tester.tap(find.text('New host'));
@@ -262,7 +262,9 @@ void main() {
     sftp.sides[1]
       ..host = web
       ..state = TabState.connected;
-    ws.tabs.addAll([term, sftp]);
+    ws
+      ..add(term)
+      ..add(sftp);
     ws.focus(term);
     await tester.pump(const Duration(milliseconds: 300));
     await shot('terminal-$suffix');
@@ -283,7 +285,7 @@ void main() {
       '16  main    5432 \x1b[32monline\x1b[0m postgres /var/lib/postgresql/16/main\r\n'
       '\x1b[1;32mdeploy@db-primary\x1b[0m:\x1b[1;34m~\x1b[0m\$ ',
     );
-    ws.tabs.add(term2);
+    ws.add(term2);
     ws.focus(term);
     ws.split(term, term2, TileSide.right);
     ws.split(term, sftp, TileSide.bottom);

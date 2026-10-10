@@ -140,7 +140,9 @@ Match host foo
       ..host = host
       ..state = TabState.closed
       ..error = 'Cannot reach web-01.example.internal:2222';
-    ws.tabs.addAll([term, sftp]);
+    ws
+      ..add(term)
+      ..add(sftp);
     ws.focus(term);
     await tester.pump(const Duration(milliseconds: 100));
     // Two tabs in the strip, the terminal one showing.
@@ -170,18 +172,22 @@ Match host foo
     await dragTab(1, Offset(area.right - 20, area.center.dy));
     expect(ws.tiled, [term, sftp]);
     expect((ws.layout! as TileSplit).axis, TileAxis.row);
-    expect(find.byTooltip('Take out of the split'), findsNWidgets(2));
+    // The two now share one entry in the tab strip.
+    expect(ws.pages, hasLength(1));
+    expect(find.byTooltip('Separate into tabs'), findsOneWidget);
+    expect(find.byTooltip('Move back to its own tab'), findsNWidgets(2));
 
-    // Now two tiles are on screen; drop the sftp tab on the terminal tile's
-    // bottom edge instead.
+    // Now two tiles are on screen; drag the sftp tile by its title bar onto
+    // the terminal tile's bottom edge instead.
     final left = Offset(area.left + area.width * .2, area.bottom - 15);
     await dragTab(1, left);
     expect(ws.tiled, [term, sftp]);
     expect((ws.layout! as TileSplit).axis, TileAxis.column);
 
-    await tester.tap(find.byTooltip('Take out of the split').last);
+    await tester.tap(find.byTooltip('Move back to its own tab').last);
     await tester.pump(const Duration(milliseconds: 100));
     expect(ws.tiled, [term]);
+    expect(ws.pages, hasLength(2));
     ws.closeTab(sftp);
     ws.closeTab(term);
     await tester.pumpAndSettle();

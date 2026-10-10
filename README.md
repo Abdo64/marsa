@@ -17,8 +17,8 @@ Android and iOS are planned on the same codebase.
 ## Features
 
 - **Hosts** with tags, search, jump hosts (ProxyJump) and quick connect by
-  typing `user@host`. A **groups panel** beside the list filters by group or
-  tag in one click; drag a host onto a group to move it. A host can sign in with **this device's SSH keys**
+  typing `user@host`. A row of **group and tag filters** above the list switches
+  between them in one click; drag a host onto a group to move it. A host can sign in with **this device's SSH keys**
   (`~/.ssh/id_*`), used in place and never copied into the vault, so each
   device connects with its own key.
 - **Import** hosts from an OpenSSH config, a CSV (including the layout
@@ -29,7 +29,8 @@ Android and iOS are planned on the same codebase.
   four colour schemes.
 - **Tiling**: drag a tab onto the working area to split it left, right, above
   or below another session; drag dividers to resize, drag a tile's title bar
-  to rearrange. Terminals and file views mix freely.
+  to rearrange. A split is a single entry in the tab strip, so other tabs
+  open full size beside it. Terminals and file views mix freely.
 - **SFTP**: two panes, each showing this computer or any saved host, so
   files and whole folders copy computer to server or **server to server**
   (relayed through the app; the servers need no access to each other). With

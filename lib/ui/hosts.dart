@@ -23,10 +23,10 @@ class HostsPage extends StatefulWidget {
 class _HostsPageState extends State<HostsPage> {
   String _query = '';
 
-  /// The group picked in the groups panel; null shows every host.
+  /// The group picked in the filter row; null shows every host.
   String? _group;
 
-  /// The tag picked in the groups panel, if any.
+  /// The tag picked in the filter row, if any.
   String? _tag;
 
   Future<void> _moveTo(Host h, String group) async {
@@ -264,7 +264,7 @@ class _HostsPageState extends State<HostsPage> {
           ..sort(
             (a, b) => a.title.toLowerCase().compareTo(b.title.toLowerCase()),
           );
-    // The groups panel counts what the search found, before the selected
+    // The filter row counts what the search found, before the selected
     // group narrows the list.
     final counts = <String, int>{};
     for (final h in hosts) {
@@ -462,9 +462,9 @@ Color groupColor(String seed) =>
     _avatarColors[seed.codeUnits.fold(0, (a, b) => a + b) %
         _avatarColors.length];
 
-/// Puts the groups panel beside the host list: a column on a wide window, a
-/// strip of chips on a narrow one. It lists groups and tags; both filter the
-/// list, and a host card can be dropped on a group to move it there.
+/// A row of filter chips above the host list: every group, then every tag.
+/// Picking one narrows the list, and a host card can be dropped on a group
+/// to move it there. Hidden while there is nothing to pick between.
 class _GroupsLayout extends StatelessWidget {
   const _GroupsLayout({
     required this.counts,
@@ -493,73 +493,69 @@ class _GroupsLayout extends StatelessWidget {
       ..sort((a, b) => a.toLowerCase().compareTo(b.toLowerCase()));
     final tagNames = tags.keys.toList()
       ..sort((a, b) => a.toLowerCase().compareTo(b.toLowerCase()));
-    if (total == 0 && named.isEmpty) return child;
+    if (named.isEmpty && tagNames.isEmpty) return child;
     final t = Theme.of(context);
     final scheme = t.colorScheme;
+    final muted = Palette.of(context).muted;
 
-    Widget entry({
+    Widget chip({
       required String label,
       required int count,
       required bool on,
       required VoidCallback onTap,
-      required Widget lead,
-      required bool chip,
+      Widget? lead,
       String? dropGroup,
     }) {
-      Widget tile(bool hovering) => Padding(
-        padding: chip
-            ? const EdgeInsets.only(right: 6)
-            : const EdgeInsets.symmetric(vertical: 1),
+      Widget pill(bool hovering) => Padding(
+        padding: const EdgeInsets.only(right: 6),
         child: Material(
-          color: hovering
-              ? scheme.primaryContainer
-              : on
-              ? scheme.surfaceContainerHigh
-              : Colors.transparent,
-          borderRadius: BorderRadius.circular(7),
+          color: hovering || on ? scheme.primaryContainer : Colors.transparent,
+          shape: StadiumBorder(
+            side: BorderSide(
+              color: hovering || on ? scheme.primary : scheme.outlineVariant,
+            ),
+          ),
+          clipBehavior: Clip.antiAlias,
           child: InkWell(
-            borderRadius: BorderRadius.circular(7),
             onTap: onTap,
             child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+              padding: const EdgeInsets.symmetric(horizontal: 11),
               child: Row(
-                mainAxisSize: chip ? MainAxisSize.min : MainAxisSize.max,
+                mainAxisSize: MainAxisSize.min,
                 children: [
-                  lead,
-                  const SizedBox(width: 10),
-                  Flexible(
-                    fit: chip ? FlexFit.loose : FlexFit.tight,
-                    child: Text(
-                      label,
-                      overflow: TextOverflow.ellipsis,
-                      style: TextStyle(
-                        fontSize: 13,
-                        color: on
-                            ? scheme.onSurface
-                            : Palette.of(context).muted,
-                        fontWeight: on ? FontWeight.w600 : FontWeight.w400,
-                      ),
+                  if (lead != null) ...[lead, const SizedBox(width: 7)],
+                  Text(
+                    label,
+                    style: TextStyle(
+                      fontSize: 12.5,
+                      color: on ? scheme.onPrimaryContainer : muted,
+                      fontWeight: on ? FontWeight.w600 : FontWeight.w400,
                     ),
                   ),
-                  const SizedBox(width: 10),
-                  Text('$count', style: t.textTheme.labelSmall),
+                  const SizedBox(width: 7),
+                  Text(
+                    '$count',
+                    style: t.textTheme.labelSmall?.copyWith(
+                      color: on ? scheme.onPrimaryContainer : null,
+                    ),
+                  ),
                 ],
               ),
             ),
           ),
         ),
       );
-      if (dropGroup == null) return tile(false);
+      if (dropGroup == null) return pill(false);
       return DragTarget<Host>(
         onWillAcceptWithDetails: (d) => d.data.group != dropGroup,
         onAcceptWithDetails: (d) => onDrop(d.data, dropGroup),
-        builder: (context, candidates, _) => tile(candidates.isNotEmpty),
+        builder: (context, candidates, _) => pill(candidates.isNotEmpty),
       );
     }
 
     Widget dot(Color? fill) => Container(
-      width: 8,
-      height: 8,
+      width: 7,
+      height: 7,
       decoration: BoxDecoration(
         shape: BoxShape.circle,
         color: fill,
@@ -567,109 +563,57 @@ class _GroupsLayout extends StatelessWidget {
       ),
     );
 
-    List<Widget> groupEntries(bool chip) => [
-      entry(
-        label: 'All hosts',
-        count: total,
-        on: selected == null && selectedTag == null,
-        onTap: () => onSelect(null),
-        lead: dot(scheme.outline),
-        chip: chip,
-      ),
-      for (final g in named)
-        entry(
-          label: g,
-          count: counts[g]!,
-          on: selected == g,
-          onTap: () => onSelect(g),
-          lead: dot(groupColor(g)),
-          chip: chip,
-          dropGroup: g,
-        ),
-      if (named.isNotEmpty && counts.containsKey(''))
-        entry(
-          label: 'Ungrouped',
-          count: counts['']!,
-          on: selected == '',
-          onTap: () => onSelect(''),
-          lead: dot(null),
-          chip: chip,
-          dropGroup: '',
-        ),
-    ];
-    List<Widget> tagEntries(bool chip) => [
-      for (final tag in tagNames)
-        entry(
-          label: tag,
-          count: tags[tag]!,
-          on: selectedTag == tag,
-          onTap: () => onSelectTag(tag),
-          lead: Icon(Icons.sell_outlined, size: 13, color: scheme.outline),
-          chip: chip,
-        ),
-    ];
-    Widget heading(String text) => Padding(
-      padding: const EdgeInsets.fromLTRB(10, 6, 0, 8),
-      child: Text(
-        text,
-        style: t.textTheme.labelSmall?.copyWith(
-          letterSpacing: .6,
-          fontWeight: FontWeight.w600,
-        ),
-      ),
-    );
-
-    return LayoutBuilder(
-      builder: (context, box) => box.maxWidth >= 720
-          ? Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                SizedBox(
-                  width: 200,
-                  child: ListView(
-                    padding: const EdgeInsets.fromLTRB(16, 0, 8, 16),
-                    children: [
-                      heading('GROUPS'),
-                      ...groupEntries(false),
-                      if (named.isEmpty)
-                        Padding(
-                          padding: const EdgeInsets.fromLTRB(10, 8, 6, 0),
-                          child: Text(
-                            'No groups yet. Use "Move to group…" in a '
-                            'host\'s ⋮ menu to start one, then drag hosts '
-                            'onto it.',
-                            style: t.textTheme.labelSmall?.copyWith(
-                              fontWeight: FontWeight.w400,
-                              height: 1.4,
-                            ),
-                          ),
-                        ),
-                      if (tagNames.isNotEmpty) ...[
-                        const SizedBox(height: 14),
-                        heading('TAGS'),
-                        ...tagEntries(false),
-                      ],
-                    ],
-                  ),
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        SizedBox(
+          height: 40,
+          child: ListView(
+            scrollDirection: Axis.horizontal,
+            padding: const EdgeInsets.fromLTRB(24, 0, 18, 12),
+            children: [
+              chip(
+                label: 'All',
+                count: total,
+                on: selected == null && selectedTag == null,
+                onTap: () => onSelect(null),
+              ),
+              for (final g in named)
+                chip(
+                  label: g,
+                  count: counts[g]!,
+                  on: selected == g,
+                  onTap: () => onSelect(g),
+                  lead: dot(groupColor(g)),
+                  dropGroup: g,
                 ),
-                const VerticalDivider(width: 1),
-                Expanded(child: child),
-              ],
-            )
-          : Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                SizedBox(
-                  height: 40,
-                  child: ListView(
-                    scrollDirection: Axis.horizontal,
-                    padding: const EdgeInsets.fromLTRB(24, 0, 18, 6),
-                    children: [...groupEntries(true), ...tagEntries(true)],
-                  ),
+              if (named.isNotEmpty && counts.containsKey(''))
+                chip(
+                  label: 'Ungrouped',
+                  count: counts['']!,
+                  on: selected == '',
+                  onTap: () => onSelect(''),
+                  lead: dot(null),
+                  dropGroup: '',
                 ),
-                Expanded(child: child),
-              ],
-            ),
+              if (named.isNotEmpty && tagNames.isNotEmpty)
+                const Padding(
+                  padding: EdgeInsets.only(left: 4, right: 10),
+                  child: VerticalDivider(width: 1, indent: 5, endIndent: 5),
+                ),
+              for (final tag in tagNames)
+                chip(
+                  label: tag,
+                  count: tags[tag]!,
+                  on: selectedTag == tag,
+                  onTap: () => onSelectTag(tag),
+                  lead: Icon(Icons.sell_outlined, size: 12, color: muted),
+                ),
+            ],
+          ),
+        ),
+        Expanded(child: child),
+      ],
     );
   }
 }
@@ -703,7 +647,7 @@ class _HostCard extends StatelessWidget {
     final scheme = t.colorScheme;
     // Hosts in the same group share a colour, so groups read at a glance.
     final color = groupColor(host.group.isEmpty ? host.title : host.group);
-    // Draggable onto a group in the groups panel.
+    // Draggable onto a group in the filter row.
     return Draggable<Host>(
       data: host,
       dragAnchorStrategy: pointerDragAnchorStrategy,

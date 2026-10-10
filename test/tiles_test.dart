@@ -55,29 +55,41 @@ void main() {
   // A tab that is never started, so nothing connects anywhere.
   AppTab add(String name) {
     final tab = TerminalTab(Host(label: name, address: name), vault, ws.ui);
-    ws.tabs.add(tab);
+    ws.add(tab);
     return tab;
   }
 
-  test('tabs replace the focused tile until they are split', () {
+  String strip() => ws.pages.map(shape).join(' ');
+
+  test('a split is one entry in the tab strip', () {
     final a = add('a'), b = add('b'), c = add('c');
     ws.focus(a);
-    expect(shape(ws.layout), 'a');
+    expect(strip(), 'a b c');
     ws.focus(b);
-    expect(shape(ws.layout), 'b', reason: 'one tile: a plain tab switch');
+    expect(shape(ws.layout), 'b', reason: 'a plain tab switch');
 
+    // Tiling a tab takes it out of the strip and into the other's entry.
     ws.split(b, a, TileSide.left);
+    expect(strip(), '(a|b) c');
     expect(shape(ws.layout), '(a|b)');
     expect(ws.active, a);
 
-    // A tab not on screen takes the focused tile; the split keeps its shape.
-    ws.focus(b);
+    // Another tab shows on its own; the split waits as it was.
     ws.focus(c);
-    expect(shape(ws.layout), '(a|c)');
-    expect(ws.active, c);
-    // Focusing a tab that is on screen moves nothing.
-    ws.focus(a);
-    expect(shape(ws.layout), '(a|c)');
+    expect(shape(ws.layout), 'c');
+    expect(strip(), '(a|b) c');
+    ws.open(ws.pages.first);
+    expect(shape(ws.layout), '(a|b)');
+    expect(ws.active, a);
+
+    // A new session is its own tab rather than landing in the split.
+    final d = add('d');
+    ws.focus(d);
+    expect(strip(), '(a|b) c d');
+
+    ws.separate(ws.pages.first);
+    expect(strip(), 'a b c d');
+    expect(ws.active, d);
   });
 
   test('splits nest in all four directions and tabs can be moved', () {
@@ -87,6 +99,7 @@ void main() {
     ws.split(b, c, TileSide.bottom);
     ws.split(a, d, TileSide.top);
     expect(shape(ws.layout), '((d/a)|(b/c))');
+    expect(strip(), '((d/a)|(b/c))');
     expect(ws.tiled.map((t) => t.host.label), ['d', 'a', 'b', 'c']);
 
     // Dragging a tiled tab elsewhere moves it rather than duplicating it.
@@ -108,22 +121,23 @@ void main() {
     ws.untile(c);
     expect(shape(ws.layout), '(a|b)');
     expect((ws.layout! as TileSplit).ratio, .3, reason: 'sizes are kept');
-    expect(ws.tabs, contains(c), reason: 'still open in the tab strip');
+    expect(strip(), '(a|b) c', reason: 'back in the tab strip');
     expect(ws.active, a);
 
     ws.closeTab(a);
     expect(shape(ws.layout), 'b');
     expect(ws.active, b, reason: 'focus follows to the tile that is left');
     ws.untile(b);
-    expect(shape(ws.layout), 'b', reason: 'the last tile cannot be removed');
+    expect(strip(), 'b c', reason: 'a lone tab has nothing to leave');
 
-    // Closing the only tile shows a neighbouring tab instead of nothing.
+    // Closing what is on screen shows a neighbouring tab instead of nothing.
     ws.closeTab(b);
     expect(shape(ws.layout), 'c');
     expect(ws.active, c);
     ws.closeTab(c);
     expect(ws.layout, isNull);
     expect(ws.active, isNull);
+    expect(ws.pages, isEmpty);
   });
 
   test('a section page keeps the split for when you come back', () {
