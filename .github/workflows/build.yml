@@ -133,8 +133,22 @@ jobs:
         if: env.P12_BASE64 != ''
         run: |
           codesign --force --timestamp --sign "$SIGN_IDENTITY" dist/Marsa-macos.dmg
-          xcrun notarytool submit dist/Marsa-macos.dmg --wait \
-            --apple-id "$APPLE_ID" --password "$APPLE_APP_PASSWORD" --team-id "$APPLE_TEAM_ID"
+          CREDS=(--apple-id "$APPLE_ID" --password "$APPLE_APP_PASSWORD" --team-id "$APPLE_TEAM_ID")
+          ID="$(xcrun notarytool submit dist/Marsa-macos.dmg "${CREDS[@]}" --output-format json | python3 -c 'import sys,json; print(json.load(sys.stdin)["id"])')"
+          echo "Submission $ID"
+          # Apple can take a long time, and one dropped connection must not
+          # throw the wait away: poll, and keep going through errors.
+          STATUS=
+          for i in $(seq 1 180); do
+            STATUS="$(xcrun notarytool info "$ID" "${CREDS[@]}" --output-format json 2>/dev/null | python3 -c 'import sys,json; print(json.load(sys.stdin)["status"])' 2>/dev/null || true)"
+            echo "Status: ${STATUS:-unreachable}"
+            [ -n "$STATUS" ] && [ "$STATUS" != "In Progress" ] && break
+            sleep 30
+          done
+          if [ "$STATUS" != "Accepted" ]; then
+            xcrun notarytool log "$ID" "${CREDS[@]}" || true
+            exit 1
+          fi
           # Attach the approval so the app opens without a network check.
           xcrun stapler staple dist/Marsa-macos.dmg
           spctl --assess --type open --context context:primary-signature --verbose=2 dist/Marsa-macos.dmg
