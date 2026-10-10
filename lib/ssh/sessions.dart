@@ -109,41 +109,107 @@ class TerminalTab extends AppTab {
   }
 }
 
+/// One pane of an SFTP tab: this computer, or a server it is connected to.
+class SftpSide {
+  /// Null means this computer.
+  Host? host;
+  FileBackend? files;
+  TabState state = TabState.connecting;
+  String? error;
+  Connection? _conn;
+
+  void _drop() {
+    files = null;
+    _conn?.close();
+    _conn = null;
+  }
+}
+
+/// A two-pane file view. Either pane can show this computer or any saved
+/// host, so files can go computer to server or straight from one server to
+/// another (relayed through this app; the servers never talk to each other).
 class SftpTab extends AppTab {
-  SftpTab(super.host, this._vault, this._ui);
+  SftpTab(super.host, this._vault, this._ui, {FileBackend? local})
+    : _local = local ?? LocalFiles();
 
   final VaultSession _vault;
   final Prompter _ui;
-  Connection? _conn;
-  FileBackend? remote;
+  final FileBackend _local;
+
+  /// Left and right pane. Starts as this computer and the tab's host.
+  final sides = [SftpSide(), SftpSide()];
+
+  /// The second pane's files, which is the tab's own host unless changed.
+  FileBackend? get remote => sides[1].files;
+  set remote(FileBackend? files) => sides[1].files = files;
 
   @override
   Future<void> start() async {
-    close();
-    _set(TabState.connecting);
+    if (sides[1].host == null && sides[1].files == null) sides[1].host = host;
+    await Future.wait([for (var i = 0; i < 2; i++) show(i, sides[i].host)]);
+  }
+
+  /// Points pane [index] at [target] (null for this computer) and connects.
+  Future<void> show(int index, Host? target) async {
+    final side = sides[index];
+    side._drop();
+    side
+      ..host = target
+      ..error = null
+      ..state = TabState.connecting;
+    _refresh();
+    if (target == null) {
+      side
+        ..files = _local
+        ..state = TabState.connected;
+      return _refresh();
+    }
     try {
-      final conn = _conn = await connect(_vault, host, _ui);
-      remote = RemoteFiles(await conn.client.sftp(), host.title);
-      if (_disposed) return close();
-      _set(TabState.connected);
+      final conn = side._conn = await connect(_vault, target, _ui);
+      final files = RemoteFiles(await conn.client.sftp(), target.title);
+      // Closed, or switched to something else, while we were connecting.
+      if (_disposed || side._conn != conn) return conn.close();
+      side
+        ..files = files
+        ..state = TabState.connected;
       unawaited(
         conn.client.done.catchError((_) {}).whenComplete(() {
-          if (_conn != conn) return;
-          close();
-          _set(TabState.closed, 'Connection closed');
+          if (side._conn != conn) return;
+          side._drop();
+          side
+            ..state = TabState.closed
+            ..error = 'Connection closed';
+          _refresh();
         }),
       );
     } catch (e) {
-      close();
-      _set(TabState.closed, e.toString());
+      side._drop();
+      side
+        ..state = TabState.closed
+        ..error = e.toString();
     }
+    _refresh();
+  }
+
+  // The tab's own status is its least healthy pane.
+  void _refresh() {
+    final states = sides.map((s) => s.state);
+    final bad = sides.where((s) => s.state == TabState.closed).firstOrNull;
+    _set(
+      bad != null
+          ? TabState.closed
+          : states.contains(TabState.connecting)
+          ? TabState.connecting
+          : TabState.connected,
+      bad?.error,
+    );
   }
 
   @override
   void close() {
-    remote = null;
-    _conn?.close();
-    _conn = null;
+    for (final s in sides) {
+      s._drop();
+    }
   }
 }
 
@@ -185,7 +251,7 @@ class Workspace extends ChangeNotifier {
   }
 
   void openTerminal(Host h) => _open(TerminalTab(h, vault, ui));
-  void openSftp(Host h) => _open(SftpTab(h, vault, ui));
+  void openSftp(Host h) => _open(SftpTab(h, vault, ui, local: localFiles));
 
   void closeTab(AppTab tab) {
     final i = tabs.indexOf(tab);

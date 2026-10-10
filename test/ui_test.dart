@@ -135,7 +135,9 @@ Match host foo
     // Tabs are shown without connecting anywhere.
     final term = TerminalTab(host, vault, ws.ui);
     term.terminal.write('hello \x1b[32mgreen\x1b[0m\r\n');
-    final sftp = SftpTab(host, vault, ws.ui)
+    final sftp = SftpTab(host, vault, ws.ui)..state = TabState.closed;
+    sftp.sides[1]
+      ..host = host
       ..state = TabState.closed
       ..error = 'Cannot reach web-01.example.internal:2222';
     ws.tabs.addAll([term, sftp]);

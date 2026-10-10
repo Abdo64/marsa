@@ -256,6 +256,12 @@ void main() {
         _e('index.html', size: 10844),
         _e('robots.txt', size: 67),
       ]);
+    sftp.sides[0]
+      ..files = ws.localFiles
+      ..state = TabState.connected;
+    sftp.sides[1]
+      ..host = web
+      ..state = TabState.connected;
     ws.tabs.addAll([term, sftp]);
     ws.focus(term);
     await tester.pump(const Duration(milliseconds: 300));

@@ -6,7 +6,7 @@ import 'common.dart';
 import 'sync_dialog.dart';
 import 'theme.dart';
 
-const appVersion = '0.2.0';
+const appVersion = '0.2.1';
 
 class SettingsPage extends StatelessWidget {
   const SettingsPage({

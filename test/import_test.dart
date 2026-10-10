@@ -105,7 +105,10 @@ Host *
   test('unreadable input is reported, not imported', () {
     expect(() => parseImport('just some notes'), throwsA(isA<ImportError>()));
     expect(() => parseImport(''), throwsA(isA<ImportError>()));
-    expect(decodeText(Uint8List.fromList([0xEF, 0xBB, 0xBF, 0x68, 0x69])), 'hi');
+    expect(
+      decodeText(Uint8List.fromList([0xEF, 0xBB, 0xBF, 0x68, 0x69])),
+      'hi',
+    );
     expect(decodeText(Uint8List.fromList(latin1.encode('café'))), 'café');
   });
 }

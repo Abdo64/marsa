@@ -450,6 +450,41 @@ void main() {
     expect(File('${tmp.path}/outside-dir/keep.txt').existsSync(), isTrue);
 
     await expectLater(remote.list('$remoteRoot/nope'), throwsA(anything));
+
+    // Server to server: point the first pane at a host too and copy across.
+    expect(tab.sides[0].host, isNull);
+    expect(tab.sides[0].files, isA<LocalFiles>());
+    await tab.show(0, host);
+    expect(tab.sides[0].state, TabState.connected, reason: tab.sides[0].error);
+    final left = tab.sides[0].files!;
+    expect(left, isNot(same(tab.sides[1].files)));
+    Directory('${tmp.path}/srv-a/site').createSync(recursive: true);
+    File('${tmp.path}/srv-a/site/index.html').writeAsStringSync('<h1>hi</h1>');
+    Directory('${tmp.path}/srv-b').createSync();
+    await transfers.copy(
+      left,
+      '${tmp.path}/srv-a',
+      (await left.list('${tmp.path}/srv-a')).single,
+      tab.sides[1].files!,
+      '${tmp.path}/srv-b',
+    );
+    expect(transfers.transfers.first.error, isNull);
+    expect(
+      File('${tmp.path}/srv-b/site/index.html').readAsStringSync(),
+      '<h1>hi</h1>',
+    );
+
+    // A pane that cannot connect fails by itself; the other keeps working.
+    await tab.show(
+      0,
+      Host(address: '127.0.0.1', port: 1, username: user, useDeviceKeys: false),
+    );
+    expect(tab.sides[0].state, TabState.closed);
+    expect(tab.sides[0].error, isNotNull);
+    expect(tab.sides[1].state, TabState.connected);
+    expect(tab.state, TabState.closed);
+    await tab.show(0, null);
+    expect(tab.state, TabState.connected);
     tab.dispose();
   }, skip: skip);
 

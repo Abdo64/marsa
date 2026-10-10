@@ -75,8 +75,7 @@ class SftpTabView extends StatefulWidget {
 }
 
 class _SftpTabViewState extends State<SftpTabView> {
-  late final _local = PaneController(widget.ws.localFiles)..open();
-  PaneController? _remote;
+  final List<PaneController?> _panes = [null, null];
 
   @override
   void initState() {
@@ -85,24 +84,29 @@ class _SftpTabViewState extends State<SftpTabView> {
     _onTab();
   }
 
-  // A reconnect brings a new SFTP channel; reopen the same remote folder on it.
+  // A pane that (re)connected or switched source has new files behind it.
+  // Reopen the folder it was showing if it is still the same place.
   void _onTab() {
-    final backend = widget.tab.remote;
-    if (backend == _remote?.backend) return;
-    final previous = _remote;
-    _remote = backend == null
-        ? null
-        : (PaneController(backend)
-            ..open(previous?.path.isEmpty ?? true ? null : previous!.path));
-    previous?.dispose();
+    for (var i = 0; i < 2; i++) {
+      final files = widget.tab.sides[i].files;
+      final previous = _panes[i];
+      if (files == previous?.backend) continue;
+      final same = files != null && previous?.backend.label == files.label;
+      _panes[i] = files == null
+          ? null
+          : (PaneController(files)
+              ..open(same && previous!.path.isNotEmpty ? previous.path : null));
+      previous?.dispose();
+    }
     if (mounted) setState(() {});
   }
 
   @override
   void dispose() {
     widget.tab.removeListener(_onTab);
-    _local.dispose();
-    _remote?.dispose();
+    for (final p in _panes) {
+      p?.dispose();
+    }
     super.dispose();
   }
 
@@ -119,8 +123,8 @@ class _SftpTabViewState extends State<SftpTabView> {
           context,
           'Replace existing items?',
           '${clash.take(5).join(', ')}${clash.length > 5 ? ' and ${clash.length - 5} more' : ''} '
-              'already exist in ${to.path}. Files with the same name are '
-              'overwritten.',
+              'already exist in ${to.path} on ${to.backend.label}. Files '
+              'with the same name are overwritten.',
           action: 'Replace',
         )) {
       return;
@@ -137,79 +141,141 @@ class _SftpTabViewState extends State<SftpTabView> {
     if (mounted && to.path == dest) await to.open();
   }
 
-  @override
-  Widget build(BuildContext context) {
-    final tab = widget.tab;
+  /// The pane header: what this side shows, and a menu to show something
+  /// else. Value null is this computer; a missing entry means "no change".
+  Widget _source(int i) {
+    final t = Theme.of(context);
+    final side = widget.tab.sides[i];
+    final hosts = widget.ws.vault.data.hosts.all.toList()
+      ..sort((a, b) => a.title.toLowerCase().compareTo(b.title.toLowerCase()));
+    return PopupMenuButton<String>(
+      tooltip: 'Choose what this side shows',
+      position: PopupMenuPosition.under,
+      onSelected: (id) => widget.tab.show(
+        i,
+        id.isEmpty ? null : widget.ws.vault.data.hosts[id],
+      ),
+      itemBuilder: (_) => [
+        const PopupMenuItem(
+          value: '',
+          child: Row(
+            children: [
+              Icon(Icons.laptop_mac, size: 16),
+              SizedBox(width: 10),
+              Text('This computer'),
+            ],
+          ),
+        ),
+        if (hosts.isNotEmpty) const PopupMenuDivider(),
+        for (final h in hosts)
+          PopupMenuItem(
+            value: h.id,
+            child: Row(
+              children: [
+                const Icon(Icons.dns_outlined, size: 16),
+                const SizedBox(width: 10),
+                Flexible(child: Text(h.title, overflow: TextOverflow.ellipsis)),
+              ],
+            ),
+          ),
+      ],
+      child: Padding(
+        padding: const EdgeInsets.symmetric(vertical: 6),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(
+              side.host == null ? Icons.laptop_mac : Icons.dns_outlined,
+              size: 16,
+              color: t.colorScheme.primary,
+            ),
+            const SizedBox(width: 8),
+            Flexible(
+              child: Text(
+                side.host?.title ?? side.files?.label ?? 'This computer',
+                overflow: TextOverflow.ellipsis,
+                style: t.textTheme.titleSmall,
+              ),
+            ),
+            const SizedBox(width: 4),
+            const Icon(Icons.unfold_more, size: 15),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _side(int i) {
     final scheme = Theme.of(context).colorScheme;
-    return ListenableBuilder(
-      listenable: tab,
-      builder: (context, _) {
-        final remote = _remote;
-        if (remote == null) {
-          return Center(
-            child: tab.state == TabState.connecting
+    final side = widget.tab.sides[i];
+    final pane = _panes[i];
+    final other = _panes[1 - i];
+    if (pane != null) {
+      return _Pane(
+        pane,
+        _source(i),
+        // Arrows point at the other pane: right from the first, left from
+        // the second.
+        forward: i == 0,
+        onSend: other == null ? null : () => _send(pane, other),
+      );
+    }
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Padding(
+          padding: const EdgeInsets.fromLTRB(14, 6, 6, 4),
+          child: Align(alignment: Alignment.centerLeft, child: _source(i)),
+        ),
+        Expanded(
+          child: Center(
+            child: side.state == TabState.connecting
                 ? const CircularProgressIndicator()
                 : Column(
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      Icon(Icons.cloud_off, size: 40, color: scheme.outline),
+                      Icon(Icons.cloud_off, size: 36, color: scheme.outline),
                       const SizedBox(height: 12),
                       Padding(
-                        padding: const EdgeInsets.symmetric(horizontal: 32),
+                        padding: const EdgeInsets.symmetric(horizontal: 28),
                         child: Text(
-                          tab.error ?? 'Disconnected',
+                          side.error ?? 'Disconnected',
                           textAlign: TextAlign.center,
                         ),
                       ),
                       const SizedBox(height: 12),
-                      Wrap(
-                        spacing: 8,
-                        children: [
-                          FilledButton(
-                            onPressed: tab.start,
-                            child: const Text('Reconnect'),
-                          ),
-                          OutlinedButton(
-                            onPressed: () => widget.ws.closeTab(tab),
-                            child: const Text('Close'),
-                          ),
-                        ],
+                      FilledButton(
+                        onPressed: () => widget.tab.show(i, side.host),
+                        child: const Text('Reconnect'),
                       ),
                     ],
                   ),
-          );
-        }
-        final stacked = MediaQuery.sizeOf(context).width < 900;
-        final panes = [
-          Expanded(
-            child: _Pane(
-              _local,
-              'Upload',
-              () => _send(_local, remote),
-              local: true,
-            ),
           ),
-          stacked ? const Divider() : const VerticalDivider(width: 1),
-          Expanded(
-            child: _Pane(
-              remote,
-              'Download',
-              () => _send(remote, _local),
-              local: false,
-            ),
-          ),
-        ];
-        return Column(
-          children: [
-            Expanded(
-              child: stacked ? Column(children: panes) : Row(children: panes),
-            ),
-            _Transfers(widget.ws.transfers),
-          ],
-        );
-      },
+        ),
+      ],
     );
   }
+
+  @override
+  Widget build(BuildContext context) => ListenableBuilder(
+    listenable: widget.tab,
+    builder: (context, _) {
+      final stacked = MediaQuery.sizeOf(context).width < 900;
+      final panes = [
+        Expanded(child: _side(0)),
+        stacked ? const Divider() : const VerticalDivider(width: 1),
+        Expanded(child: _side(1)),
+      ];
+      return Column(
+        children: [
+          Expanded(
+            child: stacked ? Column(children: panes) : Row(children: panes),
+          ),
+          _Transfers(widget.ws.transfers),
+        ],
+      );
+    },
+  );
 }
 
 String _size(int bytes) {
@@ -239,11 +305,22 @@ String _date(DateTime? d) {
 }
 
 class _Pane extends StatelessWidget {
-  const _Pane(this.pane, this.sendLabel, this.onSend, {required this.local});
+  const _Pane(
+    this.pane,
+    this.source, {
+    required this.forward,
+    required this.onSend,
+  });
   final PaneController pane;
-  final String sendLabel;
-  final VoidCallback onSend;
-  final bool local;
+
+  /// The header control that names this side and lets it be switched.
+  final Widget source;
+
+  /// Whether "copy to the other side" points right (first pane) or left.
+  final bool forward;
+
+  /// Null while the other side has nothing to copy to.
+  final VoidCallback? onSend;
 
   Future<void> _guard(BuildContext context, Future<void> Function() op) async {
     try {
@@ -356,20 +433,13 @@ class _Pane extends StatelessWidget {
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
             Padding(
-              padding: const EdgeInsets.fromLTRB(14, 10, 6, 8),
+              padding: const EdgeInsets.fromLTRB(14, 6, 6, 4),
               child: Row(
                 children: [
-                  Icon(
-                    local ? Icons.laptop_mac : Icons.dns_outlined,
-                    size: 16,
-                    color: scheme.primary,
-                  ),
-                  const SizedBox(width: 8),
                   Expanded(
-                    child: Text(
-                      pane.backend.label,
-                      overflow: TextOverflow.ellipsis,
-                      style: t.textTheme.titleSmall,
+                    child: Align(
+                      alignment: Alignment.centerLeft,
+                      child: source,
                     ),
                   ),
                   IconButton(
@@ -422,11 +492,14 @@ class _Pane extends StatelessWidget {
                     style: FilledButton.styleFrom(
                       minimumSize: const Size(0, 30),
                     ),
-                    icon: Icon(local ? Icons.upload : Icons.download, size: 15),
+                    icon: Icon(
+                      forward ? Icons.arrow_forward : Icons.arrow_back,
+                      size: 15,
+                    ),
                     label: Text(
                       chosen.isEmpty
-                          ? sendLabel
-                          : '$sendLabel ${chosen.length}',
+                          ? 'Copy across'
+                          : 'Copy ${chosen.length} across',
                     ),
                   ),
                   const SizedBox(width: 4),

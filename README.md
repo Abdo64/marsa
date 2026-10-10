@@ -27,9 +27,10 @@ Android and iOS are planned on the same codebase.
   detected from the file.
 - **Terminal**: xterm-compatible, 256/true colour, several sessions side by
   side, copy/paste, reconnect, four colour schemes.
-- **SFTP**: two panes (this computer and the server), upload and download of
-  files and whole folders with progress, rename, delete, new folder,
-  permissions.
+- **SFTP**: two panes, each showing this computer or any saved host, so
+  files and whole folders copy computer to server or **server to server**
+  (relayed through the app; the servers need no access to each other). With
+  progress, rename, delete, new folder and permissions.
 - **Keychain**: generate Ed25519 or RSA keys, import existing ones (including
   passphrase-protected), copy the public key, install it on a host in one
   click. **Identities** let many hosts share one username/password/key.

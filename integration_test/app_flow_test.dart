@@ -4,6 +4,10 @@
 //
 //     flutter test integration_test -d macos
 //
+// Keep the app's window visible while it runs. macOS stops drawing a window
+// that is covered or on another desktop, and the test then waits for frames
+// that never come.
+//
 // Both tests live in this one file because Flutter can only run a single
 // integration test file per launch on desktop.
 //
@@ -91,6 +95,18 @@ void main() {
     }
 
     bool shown(String text) => find.text(text).evaluate().isNotEmpty;
+
+    // The test window shares the real keyboard focus with everything else on
+    // screen, so a field can lose what was typed. Check it, and type again.
+    Future<void> type(Finder field, String text) async {
+      for (var attempt = 0; attempt < 5; attempt++) {
+        await tester.enterText(field, text);
+        await tester.pump(const Duration(milliseconds: 50));
+        if (tester.widget<TextField>(field).controller!.text == text) return;
+      }
+      fail('Could not type "$text"');
+    }
+
     Finder inDialog(Type t) =>
         find.descendant(of: find.byType(AlertDialog), matching: find.byType(t));
 
@@ -98,27 +114,30 @@ void main() {
       await tester.pumpWidget(MarsaApp(registry: registry, settings: settings));
       await tester.pumpAndSettle();
 
+      debugPrint('STAGE: Create a vault');
       // Create a vault.
       await tester.tap(find.text('New vault'));
       await tester.pumpAndSettle();
-      await tester.enterText(inDialog(TextField).at(0), 'Flow');
-      await tester.enterText(inDialog(TextField).at(1), 'correct-horse');
-      await tester.enterText(inDialog(TextField).at(2), 'correct-horse');
+      await type(inDialog(TextField).at(0), 'Flow');
+      await type(inDialog(TextField).at(1), 'correct-horse');
+      await type(inDialog(TextField).at(2), 'correct-horse');
       await tester.tap(find.text('Create'));
       await until(() => shown('No hosts yet'), 'the empty hosts screen');
 
+      debugPrint('STAGE: Add a host');
       // Add a host; device keys are preselected because this device has some.
       await tester.tap(find.text('New host').first);
       await tester.pumpAndSettle();
       expect(find.text('This device\'s SSH keys (~/.ssh)'), findsOneWidget);
-      await tester.enterText(inDialog(TextField).at(0), 'local box');
-      await tester.enterText(inDialog(TextField).at(1), '127.0.0.1');
-      await tester.enterText(inDialog(TextField).at(2), '$port');
-      await tester.enterText(inDialog(TextField).at(5), user);
+      await type(inDialog(TextField).at(0), 'local box');
+      await type(inDialog(TextField).at(1), '127.0.0.1');
+      await type(inDialog(TextField).at(2), '$port');
+      await type(inDialog(TextField).at(5), user);
       await tester.tap(find.text('Save'));
       await tester.pumpAndSettle();
       expect(find.text('local box'), findsOneWidget);
 
+      debugPrint('STAGE: Connect');
       // Connect: first contact asks to trust the server's key.
       await tester.tap(find.text('local box'));
       await until(() => shown('Trust this server?'), 'the host key prompt');
@@ -135,6 +154,7 @@ void main() {
       term.send('echo flow-\$((40+2))\r');
       await until(() => screen().contains('flow-42'), 'command output');
 
+      debugPrint('STAGE: SFTP on the same server');
       // SFTP on the same server, from the tab strip.
       await tester.tap(find.byTooltip('Browse this server\'s files (SFTP)'));
       await until(() => ws.tabs.length == 2, 'the SFTP tab');
@@ -146,14 +166,17 @@ void main() {
       // The key was pinned without a second prompt.
       expect(ws.vault.data.knownHosts['127.0.0.1:$port'], isNotNull);
 
+      debugPrint('STAGE: Remember on this device');
       // Remember on this device, through the real OS credential store.
-      await tester.tap(find.text('Settings'));
+      // By icon: on a narrow window the sidebar shows icons without labels.
+      await tester.tap(find.byIcon(Icons.settings_outlined));
       await tester.pumpAndSettle();
       await tester.tap(find.byType(Switch));
       await until(() => ws.vault.info.remembered, 'the key to be stored');
 
+      debugPrint('STAGE: Lock (confirming');
       // Lock (confirming, since sessions are open), then return passwordless.
-      await tester.tap(find.text('Lock vault'));
+      await tester.tap(find.byIcon(Icons.lock_outline));
       await tester.pumpAndSettle();
       await tester.tap(find.text('Lock'));
       await until(() => shown('Unlock'), 'the unlock screen');
