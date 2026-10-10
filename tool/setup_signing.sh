@@ -36,10 +36,19 @@ security create-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN"
 security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN"
 security import "$P12" -k "$KEYCHAIN" -P "$P12_PASSWORD" -T /usr/bin/codesign >/dev/null \
   || { echo "Could not open the .p12: wrong password?"; exit 1; }
-IDENTITY="$(security find-identity -v -p codesigning "$KEYCHAIN" | grep -o '"Developer ID Application: [^"]*"' | head -1 | tr -d '"' || true)"
+# Without -v: this keychain is outside the search list, so macOS cannot
+# always build the trust chain for it and would call a good identity invalid.
+FOUND="$(security find-identity -p codesigning "$KEYCHAIN" | grep -o '"[^"]*"' | sort -u | tr -d '"' || true)"
+IDENTITY="$(echo "$FOUND" | grep '^Developer ID Application: ' | head -1 || true)"
 [ -n "$IDENTITY" ] || {
   echo "That .p12 has no 'Developer ID Application' certificate with a private key."
-  echo "Export it from 'My Certificates' so the key comes along."
+  if [ -n "$FOUND" ]; then
+    echo "It holds this instead:"; echo "$FOUND" | sed 's/^/  /'
+    echo "Export the one whose name starts with 'Developer ID Application'."
+  else
+    echo "It holds no certificate with a private key at all. In Keychain Access,"
+    echo "export from 'My Certificates' so the key comes along."
+  fi
   exit 1
 }
 TEAM_ID="$(echo "$IDENTITY" | sed -E 's/.*\(([A-Z0-9]{10})\)$/\1/')"
