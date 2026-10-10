@@ -4,6 +4,9 @@
 //
 //     flutter test integration_test -d macos
 //
+// Both tests live in this one file because Flutter can only run a single
+// integration test file per launch on desktop.
+//
 // Like the SSH tests it talks to a throwaway local sshd, and it keeps its
 // vault in a temp folder, so your own vaults and ~/.ssh are not involved.
 import 'dart:io';
@@ -11,6 +14,7 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:integration_test/integration_test.dart';
+import 'package:marsa/core/crypto.dart';
 import 'package:marsa/core/vault.dart';
 import 'package:marsa/main.dart';
 import 'package:marsa/platform/keystore.dart';
@@ -23,6 +27,25 @@ const _sshd = '/usr/sbin/sshd';
 
 void main() {
   IntegrationTestWidgetsFlutterBinding.ensureInitialized();
+
+  testWidgets('a vault key round-trips through the OS credential store', (
+    tester,
+  ) async {
+    final store = SystemKeyStore();
+    final id = 'integration-test-${newId()}';
+    final key = randomBytes(32);
+    try {
+      expect(await store.read(id), isNull);
+      await store.write(id, key);
+      expect(await store.read(id), key);
+      final replaced = randomBytes(32);
+      await store.write(id, replaced);
+      expect(await store.read(id), replaced);
+    } finally {
+      await store.delete(id);
+    }
+    expect(await store.read(id), isNull);
+  });
 
   testWidgets('new user journey', (tester) async {
     final tmp = await Directory.systemTemp.createTemp('marsa_flow');
