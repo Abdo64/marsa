@@ -12,6 +12,9 @@ cd "$(dirname "$0")/.."
 
 read -r -p "Dropbox app key: " DROPBOX_APP_KEY
 read -r -p "Google OAuth client ID: " GOOGLE_CLIENT_ID
+# Copied from a browser it can arrive looking like a web address.
+GOOGLE_CLIENT_ID="${GOOGLE_CLIENT_ID#http://}"; GOOGLE_CLIENT_ID="${GOOGLE_CLIENT_ID#https://}"; GOOGLE_CLIENT_ID="${GOOGLE_CLIENT_ID%/}"
+case "$GOOGLE_CLIENT_ID" in ""|*.apps.googleusercontent.com) ;; *) echo "That is not a client ID: it should end in .apps.googleusercontent.com"; exit 1;; esac
 GOOGLE_CLIENT_SECRET=
 if [ -n "$GOOGLE_CLIENT_ID" ]; then
   read -r -p "Google OAuth client secret: " GOOGLE_CLIENT_SECRET
