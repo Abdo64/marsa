@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 import '../core/cloud.dart';
 import '../core/models.dart';
 import '../core/sync.dart';
+import '../platform/sandbox.dart';
 import '../ssh/device_keys.dart';
 import 'common.dart';
 
@@ -283,7 +284,10 @@ class _SyncDialogState extends State<_SyncDialog> {
           children: [
             for (final (type, icon, label) in [
               (SyncConfig.sftp, Icons.dns_outlined, 'Your server'),
-              (SyncConfig.folder, Icons.folder_outlined, 'Folder'),
+              // The App Store edition cannot return to a folder by itself
+              // after a restart, so it does not offer one.
+              if (!Sandbox.on || _type == SyncConfig.folder)
+                (SyncConfig.folder, Icons.folder_outlined, 'Folder'),
               for (final c in Cloud.all)
                 if (c.available) (c.type, Icons.cloud_outlined, c.name),
             ])

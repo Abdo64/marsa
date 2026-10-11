@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 
 import '../core/importers.dart';
 import '../core/models.dart';
+import '../platform/sandbox.dart';
 import '../ssh/device_keys.dart';
 import '../ssh/keys.dart';
 import '../ssh/sessions.dart';
@@ -82,8 +83,7 @@ class _HostsPageState extends State<HostsPage> {
     await widget.ws.vault.commit();
   }
 
-  String get _home =>
-      Platform.environment['HOME'] ?? Platform.environment['USERPROFILE'] ?? '';
+  String get _home => Sandbox.home;
 
   /// Reads hosts from [load], shows what was found and adds what is new.
   Future<void> _import(Future<Uint8List?> Function() load) async {
@@ -196,7 +196,7 @@ class _HostsPageState extends State<HostsPage> {
   }
 
   Future<Uint8List?> _readSshConfig() async {
-    final file = File('$_home/.ssh/config');
+    final file = File('${DeviceKeys.directory.path}/config');
     if (!await file.exists()) {
       throw ImportError('No ${file.path} on this computer');
     }
@@ -862,9 +862,12 @@ class _HostDialogState extends State<_HostDialog> {
         if (_identityId == _device) ...[
           field(_username, 'Username'),
           Text(
-            'Signs in with the keys already on whichever device is '
-            'connecting, the same ones the ssh command uses. Nothing is '
-            'copied into the vault.',
+            Sandbox.on && !DeviceKeys.available
+                ? 'Marsa cannot read your .ssh folder yet. Allow it once '
+                      'under Settings → This Mac → SSH keys on this Mac.'
+                : 'Signs in with the keys already on whichever device is '
+                      'connecting, the same ones the ssh command uses. '
+                      'Nothing is copied into the vault.',
             style: Theme.of(context).textTheme.bodySmall?.copyWith(
               color: Theme.of(context).colorScheme.onSurfaceVariant,
             ),

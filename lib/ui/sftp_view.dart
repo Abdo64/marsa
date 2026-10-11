@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../platform/sandbox.dart';
 import '../ssh/files.dart';
 import '../ssh/sessions.dart';
 import 'common.dart';
@@ -461,6 +462,20 @@ class _Pane extends StatelessWidget {
                       child: source,
                     ),
                   ),
+                  // The App Store edition only sees folders the user picks.
+                  if (Sandbox.on && pane.backend is LocalFiles)
+                    IconButton(
+                      tooltip: 'Choose a folder…',
+                      icon: const Icon(Icons.folder_open_outlined, size: 16),
+                      onPressed: () async {
+                        final r = await Sandbox.grantFolder(
+                          message: 'Choose a folder to browse in Marsa',
+                          start: pane.path,
+                          button: 'Open',
+                        );
+                        if (r != null) pane.open(r.path);
+                      },
+                    ),
                   IconButton(
                     tooltip: 'Parent folder',
                     icon: const Icon(Icons.arrow_upward, size: 16),

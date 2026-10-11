@@ -99,6 +99,8 @@ No compiling needed. These links always point at the latest release:
 | Windows, no install | [Marsa-windows-portable.zip](https://github.com/AdnanBolifa/marsa/releases/latest/download/Marsa-windows-portable.zip) | Unzip anywhere and run `marsa.exe` |
 
 All versions are on the [Releases page](https://github.com/AdnanBolifa/marsa/releases).
+A sandboxed build for the Mac App Store is described in
+[docs/app-store.md](docs/app-store.md).
 
 The macOS build is signed with a Developer ID and notarised by Apple, so it
 opens like any other app. The Windows build is not code-signed yet, so on the

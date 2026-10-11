@@ -3,8 +3,11 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:path_provider/path_provider.dart';
 
+import 'core/cloud.dart';
 import 'core/vault.dart';
 import 'platform/keystore.dart';
+import 'platform/sandbox.dart';
+import 'ssh/device_keys.dart';
 import 'ssh/sessions.dart';
 import 'ui/common.dart';
 import 'ui/shell.dart';
@@ -21,6 +24,13 @@ Future<void> main() async {
   await registry.load();
   final settings = AppSettings(File('${dir.path}/settings.json'));
   await settings.load();
+  if (Sandbox.on) {
+    Cloud.openBrowser = Sandbox.openUrl;
+    if (settings.sshFolder.isNotEmpty) {
+      final path = await Sandbox.useFolder(settings.sshFolder);
+      if (path != null) DeviceKeys.directory = Directory(path);
+    }
+  }
   runApp(MarsaApp(registry: registry, settings: settings));
 }
 

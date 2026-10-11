@@ -4,6 +4,8 @@ import 'dart:io';
 import 'package:dartssh2/dartssh2.dart';
 import 'package:flutter/foundation.dart';
 
+import '../platform/sandbox.dart';
+
 class FileEntry {
   FileEntry(this.name, this.isDir, this.size, this.modified, this.mode);
   final String name;
@@ -35,10 +37,12 @@ class LocalFiles implements FileBackend {
   String get label => 'This computer';
 
   @override
-  Future<String> home() async =>
-      Platform.environment['HOME'] ??
-      Platform.environment['USERPROFILE'] ??
-      Directory.current.path;
+  Future<String> home() async => Sandbox.on
+      // The one folder the App Store edition may read without being asked.
+      ? '${Sandbox.home}/Downloads'
+      : Sandbox.home.isEmpty
+      ? Directory.current.path
+      : Sandbox.home;
 
   @override
   String join(String dir, String name) => dir.endsWith(Platform.pathSeparator)

@@ -16,6 +16,10 @@ class AppSettings extends ChangeNotifier {
   String terminalTheme = 'auto';
   double fontSize = 13;
 
+  /// App Store edition: the pass macOS issued for the user's `.ssh` folder,
+  /// so the keys in it can be read again after a restart.
+  String sshFolder = '';
+
   Future<void> load() async {
     if (!await _file.exists()) return;
     try {
@@ -26,6 +30,7 @@ class AppSettings extends ChangeNotifier {
       );
       terminalTheme = j['terminalTheme'] as String? ?? 'auto';
       fontSize = (j['fontSize'] as num?)?.toDouble() ?? 13;
+      sshFolder = j['sshFolder'] as String? ?? '';
     } on FormatException {
       // A damaged preferences file just means defaults.
     }
@@ -39,6 +44,7 @@ class AppSettings extends ChangeNotifier {
         'themeMode': themeMode.name,
         'terminalTheme': terminalTheme,
         'fontSize': fontSize,
+        if (sshFolder.isNotEmpty) 'sshFolder': sshFolder,
       }),
     );
   }

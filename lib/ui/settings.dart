@@ -1,6 +1,10 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 
 import '../core/vault.dart';
+import '../platform/sandbox.dart';
+import '../ssh/device_keys.dart';
 import '../ssh/sessions.dart';
 import 'common.dart';
 import 'sync_dialog.dart';
@@ -82,6 +86,27 @@ class SettingsPage extends StatelessWidget {
       on ? await registry.remember(_vault) : await registry.forget(_vault.info);
     } catch (e) {
       if (context.mounted) toast(context, 'Could not remember this vault: $e');
+    }
+  }
+
+  Future<void> _allowSshFolder(BuildContext context) async {
+    final r = await Sandbox.grantFolder(
+      message:
+          'Choose your .ssh folder so Marsa can sign in to servers with the '
+          'SSH keys on this Mac',
+      start: '${Sandbox.home}/.ssh',
+    );
+    if (r == null) return;
+    DeviceKeys.directory = Directory(r.path);
+    settings.update(() => settings.sshFolder = r.bookmark);
+    if (context.mounted) {
+      final n = DeviceKeys.files().length;
+      toast(
+        context,
+        n == 0
+            ? 'No SSH keys (id_*) in that folder'
+            : 'Marsa can now use the $n SSH key(s) in ${r.path}',
+      );
     }
   }
 
@@ -341,6 +366,24 @@ class SettingsPage extends StatelessWidget {
                         ),
                       ),
                     ]),
+                    if (Sandbox.on)
+                      section('This Mac', [
+                        row(
+                          'SSH keys on this Mac',
+                          DeviceKeys.available
+                              ? 'Using the keys in ${DeviceKeys.directory.path}.'
+                              : 'macOS keeps App Store apps out of your '
+                                    '.ssh folder until you allow it. Needed '
+                                    'for hosts that sign in with this '
+                                    'device\'s SSH keys.',
+                          OutlinedButton(
+                            onPressed: () => _allowSshFolder(context),
+                            child: Text(
+                              DeviceKeys.available ? 'Change' : 'Allow access',
+                            ),
+                          ),
+                        ),
+                      ]),
                     section('About', [
                       row(
                         'Marsa $appVersion',

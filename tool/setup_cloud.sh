@@ -6,9 +6,11 @@
 #
 #   tool/setup_cloud.sh
 #
-# Leave an answer empty to skip that service.
+# Leave an answer empty to keep what is already saved for that service.
 set -euo pipefail
 cd "$(dirname "$0")/.."
+
+saved() { [ -f cloud_keys.json ] && python3 -c "import json,sys;print(json.load(open('cloud_keys.json')).get(sys.argv[1],''))" "$1" || true; }
 
 read -r -p "Dropbox app key: " DROPBOX_APP_KEY
 read -r -p "Google OAuth client ID: " GOOGLE_CLIENT_ID
@@ -19,6 +21,10 @@ GOOGLE_CLIENT_SECRET=
 if [ -n "$GOOGLE_CLIENT_ID" ]; then
   read -r -p "Google OAuth client secret: " GOOGLE_CLIENT_SECRET
   [ -n "$GOOGLE_CLIENT_SECRET" ] || { echo "Google needs both the ID and the secret."; exit 1; }
+fi
+[ -n "$DROPBOX_APP_KEY" ] || DROPBOX_APP_KEY="$(saved DROPBOX_APP_KEY)"
+if [ -z "$GOOGLE_CLIENT_ID" ]; then
+  GOOGLE_CLIENT_ID="$(saved GOOGLE_CLIENT_ID)"; GOOGLE_CLIENT_SECRET="$(saved GOOGLE_CLIENT_SECRET)"
 fi
 [ -n "$DROPBOX_APP_KEY$GOOGLE_CLIENT_ID" ] || { echo "Nothing entered."; exit 1; }
 
