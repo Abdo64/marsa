@@ -34,6 +34,9 @@ OUT=dist/appstore; rm -rf "$OUT"; mkdir -p "$OUT"
 APP="$OUT/Marsa.app"
 ditto build/macos/Build/Products/Release/Marsa.app "$APP"
 cp "$PROFILE" "$APP/Contents/embedded.provisionprofile"
+# A downloaded profile carries the "from the internet" mark, which the store
+# refuses to find inside an app.
+xattr -cr "$APP"
 
 # The sandbox entitlements, plus who the app belongs to.
 cp macos/Runner/AppStore.entitlements "$PLIST.ent"
