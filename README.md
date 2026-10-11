@@ -93,13 +93,9 @@ No compiling needed. These links always point at the latest release:
 
 All versions are on the [Releases page](https://github.com/AdnanBolifa/marsa/releases).
 
-The builds are not code-signed yet ([how to enable it](docs/signing.md)), so
-the first launch needs one extra click:
-
-- **macOS:** right-click Marsa in Applications and choose *Open*, then *Open*
-  again. (If macOS says the app is damaged, run
-  `xattr -dr com.apple.quarantine /Applications/Marsa.app` once.)
-- **Windows:** on the SmartScreen prompt choose *More info* → *Run anyway*.
+The macOS build is signed with a Developer ID and notarised by Apple, so it
+opens like any other app. The Windows build is not code-signed yet, so on the
+SmartScreen prompt choose *More info* → *Run anyway*.
 
 ## Build from source
 
@@ -180,7 +176,7 @@ Per-device data is in the user's application-support directory
 ## Roadmap
 
 - Android and iOS apps (the core and SSH layers are already platform-neutral).
-- Installers: MSIX/Inno Setup for Windows, notarised DMG for macOS.
+- Code signing for the Windows installer.
 - Auto-lock and OS keychain/biometric unlock.
 - WebDAV and S3 sync targets.
 
