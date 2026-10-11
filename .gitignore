@@ -46,3 +46,6 @@ app.*.map.json
 
 # Packaged installers
 /dist/
+
+# App keys for Dropbox / Google Drive sign-in (see docs/cloud-sync.md)
+/cloud_keys.json

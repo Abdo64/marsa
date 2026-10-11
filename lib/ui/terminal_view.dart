@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:xterm/xterm.dart';
@@ -69,6 +71,11 @@ class _TerminalTabViewState extends State<TerminalTabView> {
                   _tab.terminal,
                   controller: _tab.controller,
                   focusNode: _tab.focusNode,
+                  // The package's text-input path is refused by Flutter on
+                  // Windows (it attaches without a view), so nothing typed
+                  // arrives. Reading key presses directly works everywhere
+                  // except for macOS input methods, which keep the text path.
+                  hardwareKeyboardOnly: !Platform.isMacOS,
                   theme: theme,
                   textStyle: TerminalStyle(fontSize: widget.settings.fontSize),
                   padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),

@@ -6,6 +6,7 @@ import 'package:dartssh2/dartssh2.dart';
 import 'package:flutter/widgets.dart';
 import 'package:xterm/xterm.dart';
 
+import '../core/cloud.dart';
 import '../core/models.dart';
 import '../core/vault.dart';
 import 'connector.dart';
@@ -431,6 +432,7 @@ class Workspace extends ChangeNotifier {
     active = null;
     await forwards.stopAll();
     DeviceKeys.lock();
+    Cloud.forgetSessions();
     await vault.lock();
   }
 }

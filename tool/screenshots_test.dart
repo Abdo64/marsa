@@ -9,6 +9,7 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:marsa/core/cloud.dart';
 import 'package:marsa/core/models.dart';
 import 'package:marsa/core/vault.dart';
 import 'package:marsa/ssh/files.dart';
@@ -231,6 +232,18 @@ void main() {
       await tester.pumpAndSettle();
       await shot('${s.name}-$suffix');
     }
+
+    // The sync dialog, as a build with the cloud app keys shows it.
+    for (final c in Cloud.all) {
+      c.clientId = 'demo';
+    }
+    await tester.tap(find.text('Set up sync'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Dropbox'));
+    await tester.pumpAndSettle();
+    await shot('sync-$suffix');
+    await tester.tap(find.text('Cancel'));
+    await tester.pumpAndSettle();
 
     final term = TerminalTab(web, vault, ws.ui)..state = TabState.connected;
     term.terminal.write(

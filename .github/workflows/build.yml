@@ -47,7 +47,18 @@ jobs:
           flutter-version: ${{ env.FLUTTER_VERSION }}
           channel: stable
           cache: true
-      - run: flutter build windows --release
+      - name: Cloud drive app keys
+        # Identify Marsa to Dropbox and Google Drive. Without the secrets the
+        # file holds empty values and the build simply hides those options.
+        shell: bash
+        env:
+          DROPBOX_APP_KEY: ${{ secrets.DROPBOX_APP_KEY }}
+          GOOGLE_CLIENT_ID: ${{ secrets.GOOGLE_CLIENT_ID }}
+          GOOGLE_CLIENT_SECRET: ${{ secrets.GOOGLE_CLIENT_SECRET }}
+        run: |
+          printf '{"DROPBOX_APP_KEY":"%s","GOOGLE_CLIENT_ID":"%s","GOOGLE_CLIENT_SECRET":"%s"}\n' \
+            "$DROPBOX_APP_KEY" "$GOOGLE_CLIENT_ID" "$GOOGLE_CLIENT_SECRET" > cloud_keys.json
+      - run: flutter build windows --release --dart-define-from-file=cloud_keys.json
       - name: Bundle the Visual C++ runtime
         # Flutter apps need these three DLLs; shipping them beside the exe
         # means the app also starts on a PC that never installed the runtime.
@@ -95,7 +106,18 @@ jobs:
           flutter-version: ${{ env.FLUTTER_VERSION }}
           channel: stable
           cache: true
-      - run: flutter build macos --release
+      - name: Cloud drive app keys
+        # Identify Marsa to Dropbox and Google Drive. Without the secrets the
+        # file holds empty values and the build simply hides those options.
+        shell: bash
+        env:
+          DROPBOX_APP_KEY: ${{ secrets.DROPBOX_APP_KEY }}
+          GOOGLE_CLIENT_ID: ${{ secrets.GOOGLE_CLIENT_ID }}
+          GOOGLE_CLIENT_SECRET: ${{ secrets.GOOGLE_CLIENT_SECRET }}
+        run: |
+          printf '{"DROPBOX_APP_KEY":"%s","GOOGLE_CLIENT_ID":"%s","GOOGLE_CLIENT_SECRET":"%s"}\n' \
+            "$DROPBOX_APP_KEY" "$GOOGLE_CLIENT_ID" "$GOOGLE_CLIENT_SECRET" > cloud_keys.json
+      - run: flutter build macos --release --dart-define-from-file=cloud_keys.json
       - name: Sign with Developer ID
         if: env.P12_BASE64 != ''
         run: |

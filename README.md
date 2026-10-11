@@ -40,8 +40,9 @@ Android and iOS are planned on the same codebase.
   click. **Identities** let many hosts share one username/password/key.
 - **Vaults**: several per device (for example *Personal* and *Team*), each
   with its own master password and its own sync location.
-- **Sync** over SFTP to a server you own, or through a folder (iCloud Drive,
-  OneDrive, Dropbox, Syncthing, a network share).
+- **Sync** over SFTP to a server you own, through a folder (iCloud Drive,
+  OneDrive, Syncthing, a network share), or by **signing in to Dropbox or
+  Google Drive** from the app, with no desktop sync client needed.
 - **Port forwarding**: local, remote and dynamic (SOCKS5).
 - **Snippets**: saved commands you can send to any open terminal.
 - **Known hosts**: server keys are pinned on first use and synced, so a
@@ -63,8 +64,14 @@ Sync mirrors that same encrypted file to a location you pick. The sync target
 only ever sees ciphertext, and the sync settings themselves (server address,
 credentials) stay in the local copy and are never uploaded.
 
-**First device:** Settings → *Set up sync*. Choose *Your server (SFTP)* and
+**First device:** Settings → *Set up sync*. Choose *Your server* and
 fill it in from any saved host, or choose a folder.
+
+**Dropbox or Google Drive:** choose it in the same dialog, press *Sign in*
+and approve in the browser. The password is typed on their page, never in
+Marsa; the app can only reach its own folder there, and what it stores is the
+same encrypted file. (Available in builds made with the app keys, see
+[docs/cloud-sync.md](docs/cloud-sync.md).)
 
 **Every other device:** on the unlock screen choose *Join a synced vault*,
 enter the master password and point it at the same location. To avoid

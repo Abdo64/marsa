@@ -6,6 +6,7 @@ import 'package:dartssh2/dartssh2.dart';
 
 import '../ssh/connector.dart';
 import '../ssh/device_keys.dart';
+import 'cloud.dart';
 
 class SyncError implements Exception {
   SyncError(this.message);
@@ -27,6 +28,7 @@ class SyncConfig {
     this.privateKey = '',
     this.fingerprint = '',
     this.deviceKeys = false,
+    this.token = '',
   });
 
   factory SyncConfig.fromJson(Map<String, dynamic> j) => SyncConfig(
@@ -39,15 +41,19 @@ class SyncConfig {
     privateKey: j['privateKey'] as String? ?? '',
     fingerprint: j['fingerprint'] as String? ?? '',
     deviceKeys: j['deviceKeys'] as bool? ?? false,
+    token: j['token'] as String? ?? '',
   );
 
   static const folder = 'folder';
   static const sftp = 'sftp';
+  static const dropbox = 'dropbox';
+  static const google = 'gdrive';
 
-  /// [folder] (a file in a cloud-drive or shared folder) or [sftp].
+  /// [folder] (a file in a cloud-drive or shared folder), [sftp], or a cloud
+  /// drive signed in to from the app ([dropbox], [google]).
   final String type;
 
-  /// Full path of the vault file at the target.
+  /// Full path of the vault file at the target; for a cloud drive, its name.
   final String path;
   final String host;
   final int port;
@@ -61,23 +67,31 @@ class SyncConfig {
   /// Host key pinned on first contact with the SFTP server.
   String fingerprint;
 
+  /// What signing in to a cloud drive gave back. It lets this device reach
+  /// the vault file there until access is withdrawn on the service's site.
+  final String token;
+
   static const _linkPrefix = 'marsa-sync:';
 
   /// Where this vault syncs, as one string to paste on another device so
-  /// nobody has to retype a server address. It carries no password or key;
-  /// null for a folder, whose path differs from machine to machine.
-  String? get link => type != sftp
+  /// nobody has to retype a server address. It carries no password, key or
+  /// sign-in; null for a folder, whose path differs from machine to machine.
+  String? get link => type == folder
       ? null
       : _linkPrefix +
             base64Url.encode(
               utf8.encode(
-                jsonEncode({
-                  'host': host,
-                  'port': port,
-                  'user': username,
-                  'path': path,
-                  'deviceKeys': deviceKeys,
-                }),
+                jsonEncode(
+                  type == sftp
+                      ? {
+                          'host': host,
+                          'port': port,
+                          'user': username,
+                          'path': path,
+                          'deviceKeys': deviceKeys,
+                        }
+                      : {'type': type, 'path': path},
+                ),
               ),
             );
 
@@ -93,6 +107,11 @@ class SyncConfig {
                 ),
               )
               as Map<String, dynamic>;
+      final type = j['type'] as String? ?? sftp;
+      if (type != sftp) {
+        if (Cloud.of(type) == null) return null;
+        return SyncConfig(type: type, path: j['path'] as String);
+      }
       return SyncConfig(
         type: sftp,
         host: j['host'] as String,
@@ -106,8 +125,11 @@ class SyncConfig {
     }
   }
 
-  String get summary =>
-      type == folder ? path : 'sftp://$username@$host:$port/$path';
+  String get summary => switch (type) {
+    folder => path,
+    sftp => 'sftp://$username@$host:$port/$path',
+    _ => '${Cloud.of(type)?.name ?? type} · $path',
+  };
 
   Map<String, dynamic> toJson() => {
     'type': type,
@@ -119,6 +141,7 @@ class SyncConfig {
     'privateKey': privateKey,
     'fingerprint': fingerprint,
     'deviceKeys': deviceKeys,
+    'token': token,
   };
 }
 
@@ -134,6 +157,8 @@ Future<T> withSyncTarget<T>(
   Future<T> Function(SyncIo io) body,
 ) async {
   if (cfg.type == SyncConfig.folder) return body(_FolderIo(cfg.path));
+  final cloud = Cloud.of(cfg.type);
+  if (cloud != null) return body(Cloud.io(cloud, cfg.token, cfg.path));
   if (cfg.type != SyncConfig.sftp) {
     throw SyncError('Unknown sync type: ${cfg.type}');
   }

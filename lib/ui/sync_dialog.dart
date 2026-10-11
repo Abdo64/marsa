@@ -3,6 +3,7 @@ import 'dart:io';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 
+import '../core/cloud.dart';
 import '../core/models.dart';
 import '../core/sync.dart';
 import '../ssh/device_keys.dart';
@@ -87,9 +88,52 @@ class _SyncDialogState extends State<_SyncDialog> {
   late bool _deviceKeys = widget.current?.deviceKeys ?? DeviceKeys.available;
   final _link = TextEditingController();
 
+  CloudService? get _cloud => Cloud.of(_type);
+  late final _cloudName = TextEditingController(
+    text: Cloud.of(widget.current?.type ?? '') != null
+        ? widget.current!.path
+        : _fileName,
+  );
+  // The sign-in each cloud drive gave back, by sync type.
+  late final _tokens = <String, String>{
+    if (Cloud.of(widget.current?.type ?? '') != null)
+      widget.current!.type: widget.current!.token,
+  };
+  CloudSignIn? _signingIn;
+
+  Future<void> _signIn(CloudService service) async {
+    final attempt = Cloud.signIn(service);
+    setState(() => _signingIn = attempt);
+    try {
+      final token = await attempt.token;
+      if (mounted) setState(() => _tokens[service.type] = token);
+    } catch (e) {
+      // Cancelling is the user's own doing and needs no message.
+      if (mounted && !'$e'.contains('cancelled')) toast(context, '$e');
+    } finally {
+      if (mounted) setState(() => _signingIn = null);
+    }
+  }
+
+  @override
+  void dispose() {
+    _signingIn?.cancel();
+    super.dispose();
+  }
+
   void _pasteLink(String text) {
     final cfg = SyncConfig.fromLink(text);
     if (cfg == null) return;
+    final cloud = Cloud.of(cfg.type);
+    if (cloud != null) {
+      if (!cloud.available) {
+        return toast(context, 'This build of Marsa cannot use ${cloud.name}');
+      }
+      return setState(() {
+        _type = cfg.type;
+        _cloudName.text = cfg.path;
+      });
+    }
     setState(() {
       _type = SyncConfig.sftp;
       _host.text = cfg.host;
@@ -116,7 +160,15 @@ class _SyncDialogState extends State<_SyncDialog> {
 
   void _save() {
     final SyncConfig cfg;
-    if (_type == SyncConfig.folder) {
+    final cloud = _cloud;
+    if (cloud != null) {
+      final token = _tokens[_type] ?? '';
+      if (token.isEmpty) {
+        return toast(context, 'Sign in to ${cloud.name} first');
+      }
+      if (_cloudName.text.trim().isEmpty) return;
+      cfg = SyncConfig(type: _type, path: _cloudName.text.trim(), token: token);
+    } else if (_type == SyncConfig.folder) {
       if (_folderPath.text.trim().isEmpty) return;
       cfg = SyncConfig(type: _type, path: _folderPath.text.trim());
     } else {
@@ -145,6 +197,63 @@ class _SyncDialogState extends State<_SyncDialog> {
     Navigator.pop(context, cfg);
   }
 
+  List<Widget> _cloudFields(CloudService cloud, TextStyle? muted) {
+    final signedIn = (_tokens[cloud.type] ?? '').isNotEmpty;
+    final scheme = Theme.of(context).colorScheme;
+    return [
+      Text(
+        'Sign in once and the encrypted vault file is kept in ${cloud.where}. '
+        '${cloud.name} never sees its contents, and Marsa never sees your '
+        '${cloud.name} password: you type it on their page, in your browser.',
+        style: muted,
+      ),
+      if (_signingIn != null)
+        Row(
+          children: [
+            const SizedBox(
+              width: 16,
+              height: 16,
+              child: CircularProgressIndicator(strokeWidth: 2),
+            ),
+            const SizedBox(width: 12),
+            const Expanded(child: Text('Waiting for you in the browser…')),
+            TextButton(
+              onPressed: _signingIn!.cancel,
+              child: const Text('Cancel'),
+            ),
+          ],
+        )
+      else if (signedIn)
+        Row(
+          children: [
+            Icon(Icons.check_circle, size: 18, color: scheme.primary),
+            const SizedBox(width: 10),
+            Expanded(child: Text('Signed in to ${cloud.name}')),
+            TextButton(
+              onPressed: () => _signIn(cloud),
+              child: const Text('Use another account'),
+            ),
+          ],
+        )
+      else
+        Align(
+          alignment: Alignment.centerLeft,
+          child: FilledButton.icon(
+            onPressed: () => _signIn(cloud),
+            icon: const Icon(Icons.open_in_browser, size: 17),
+            label: Text('Sign in to ${cloud.name}'),
+          ),
+        ),
+      field(_cloudName, 'Vault file name', code: true),
+      if (widget.joining)
+        Text(
+          'Use the same ${cloud.name} account and file name as the device '
+          'that already syncs this vault.',
+          style: muted,
+        ),
+    ];
+  }
+
   @override
   Widget build(BuildContext context) {
     final hosts = widget.data?.hosts.all.toList() ?? const <Host>[];
@@ -168,24 +277,28 @@ class _SyncDialogState extends State<_SyncDialog> {
               onChanged: _pasteLink,
             ),
           ),
-        SegmentedButton<String>(
-          showSelectedIcon: false,
-          segments: const [
-            ButtonSegment(
-              value: SyncConfig.sftp,
-              icon: Icon(Icons.dns_outlined),
-              label: Text('Your server (SFTP)'),
-            ),
-            ButtonSegment(
-              value: SyncConfig.folder,
-              icon: Icon(Icons.folder_outlined),
-              label: Text('Folder'),
-            ),
+        Wrap(
+          spacing: 8,
+          runSpacing: 8,
+          children: [
+            for (final (type, icon, label) in [
+              (SyncConfig.sftp, Icons.dns_outlined, 'Your server'),
+              (SyncConfig.folder, Icons.folder_outlined, 'Folder'),
+              for (final c in Cloud.all)
+                if (c.available) (c.type, Icons.cloud_outlined, c.name),
+            ])
+              ChoiceChip(
+                avatar: Icon(icon, size: 16),
+                label: Text(label),
+                showCheckmark: false,
+                selected: _type == type,
+                onSelected: (_) => setState(() => _type = type),
+              ),
           ],
-          selected: {_type},
-          onSelectionChanged: (s) => setState(() => _type = s.first),
         ),
-        if (_type == SyncConfig.folder) ...[
+        if (_cloud != null)
+          ..._cloudFields(_cloud!, muted)
+        else if (_type == SyncConfig.folder) ...[
           Text(
             widget.joining
                 ? 'Pick the .marsa file inside your cloud-drive or shared '
