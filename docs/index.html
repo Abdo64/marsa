@@ -1,0 +1,45 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Marsa: open-source SSH and SFTP client</title>
+<meta name="description" content="Marsa is a free, open-source SSH and SFTP client for macOS and Windows with encrypted vaults that sync across your devices.">
+<link rel="icon" href="icon.png">
+<link rel="stylesheet" href="site.css">
+</head>
+<body>
+<main>
+  <header>
+    <img src="icon.png" alt="">
+    <h1>Marsa</h1>
+  </header>
+  <p class="lead">A free, open-source SSH and SFTP client for macOS and Windows. Your servers, keys and snippets live in an encrypted vault that syncs across your devices, with no subscription and no account with us.</p>
+
+  <div class="buttons">
+    <a class="button primary" href="https://github.com/AdnanBolifa/marsa/releases/latest/download/Marsa-macos.dmg">Download for macOS</a>
+    <a class="button primary" href="https://github.com/AdnanBolifa/marsa/releases/latest/download/Marsa-windows-setup.exe">Download for Windows</a>
+    <a class="button" href="https://github.com/AdnanBolifa/marsa">Source code on GitHub</a>
+  </div>
+  <p class="muted">MIT licensed. All versions are on the <a href="https://github.com/AdnanBolifa/marsa/releases">releases page</a>.</p>
+
+  <img class="shot" src="screenshots/tiles-light.png" alt="Marsa with two terminals and a file browser tiled side by side">
+
+  <h2>What it does</h2>
+  <ul>
+    <li>Terminal sessions in tabs or tiled side by side, with jump hosts and port forwarding.</li>
+    <li>SFTP between your computer and a server, or directly from server to server.</li>
+    <li>Vaults encrypted on your device with a master password (AES-256-GCM, Argon2id).</li>
+    <li>Sync through a server you own, a shared folder, Dropbox or Google Drive. Whatever you pick only ever stores the encrypted file.</li>
+    <li>Import from an OpenSSH config, a Termius-style CSV, PuTTY or MobaXterm.</li>
+  </ul>
+
+  <h2>How Marsa uses Google Drive</h2>
+  <p>If you choose Google Drive for sync, Marsa asks for access to its own hidden application-data folder in your Drive and nothing else. It stores one encrypted vault file there so your other devices can read it. Marsa cannot see, read or change any other file in your Drive.</p>
+
+  <footer class="muted">
+    <a href="privacy.html">Privacy policy</a> · <a href="https://github.com/AdnanBolifa/marsa/issues">Contact and support</a>
+  </footer>
+</main>
+</body>
+</html>

@@ -1,0 +1,21 @@
+:root { --bg:#f4f6f8; --card:#fff; --ink:#111827; --muted:#5b6472; --line:#e2e6ea; --brand:#0f8a7c; }
+@media (prefers-color-scheme: dark) {
+  :root { --bg:#0d1117; --card:#161b22; --ink:#e6edf3; --muted:#9aa4b2; --line:#2a313a; --brand:#2dd4bf; }
+}
+* { box-sizing: border-box; }
+body { margin:0; background:var(--bg); color:var(--ink); font:16px/1.6 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif; }
+main { max-width:760px; margin:0 auto; padding:48px 20px 64px; }
+header { display:flex; align-items:center; gap:14px; margin-bottom:28px; }
+header img { width:56px; height:56px; border-radius:13px; }
+h1 { font-size:28px; margin:0; line-height:1.2; }
+h2 { font-size:19px; margin:32px 0 8px; }
+p, li { color:var(--ink); }
+.lead { font-size:18px; color:var(--muted); margin:0 0 24px; }
+.muted { color:var(--muted); font-size:14px; }
+a { color:var(--brand); }
+.buttons { display:flex; flex-wrap:wrap; gap:10px; margin:20px 0 8px; }
+.button { display:inline-block; padding:10px 16px; border-radius:9px; border:1px solid var(--line); background:var(--card); color:var(--ink); text-decoration:none; font-weight:600; font-size:15px; }
+.button.primary { background:var(--brand); border-color:var(--brand); color:#fff; }
+@media (prefers-color-scheme: dark) { .button.primary { color:#06231f; } }
+img.shot { width:100%; border-radius:12px; border:1px solid var(--line); margin-top:24px; display:block; }
+footer { margin-top:40px; padding-top:18px; border-top:1px solid var(--line); }

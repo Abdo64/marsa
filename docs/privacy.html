@@ -1,0 +1,56 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Privacy policy · Marsa</title>
+<link rel="icon" href="icon.png">
+<link rel="stylesheet" href="site.css">
+</head>
+<body>
+<main>
+  <header>
+    <img src="icon.png" alt="">
+    <h1>Marsa privacy policy</h1>
+  </header>
+  <p class="muted">Last updated: 11 October 2026</p>
+
+  <p>Marsa is an open-source SSH and SFTP client published by Adnan Bolifa. This policy explains what the app does with your data. The short version: Marsa has no servers of its own and its developer receives nothing from the app.</p>
+
+  <h2>What the developer collects</h2>
+  <p>Nothing. Marsa has no accounts, no analytics, no advertising, no crash reporting and no telemetry. The app does not send any information to the developer or to any service operated by the developer.</p>
+
+  <h2>What stays on your device</h2>
+  <p>The servers, SSH keys, passwords, snippets and settings you enter are stored in a vault file on your device, encrypted with a key derived from your master password. If you turn on "Remember on this device", that key is kept in your operating system's credential store.</p>
+
+  <h2>Connections the app makes</h2>
+  <ul>
+    <li>To the servers you ask it to connect to, over SSH and SFTP.</li>
+    <li>To the sync location you choose, if you turn sync on.</li>
+  </ul>
+  <p>Sync is off by default. When it is on, the app uploads one file: your vault, already encrypted on your device. The sync location cannot read its contents.</p>
+
+  <h2>Google Drive</h2>
+  <p>If you choose Google Drive as the sync location, you sign in on Google's own page in your browser. Marsa never sees your Google password.</p>
+  <ul>
+    <li><strong>Access requested:</strong> only the <code>drive.appdata</code> scope, which covers Marsa's own hidden application-data folder in your Drive. Marsa cannot see, read, change or delete any other file in your Drive, and it does not read your name, email address or contacts.</li>
+    <li><strong>How it is used:</strong> to store, read and update your encrypted vault file so your devices stay in sync. Nothing else.</li>
+    <li><strong>Where it goes:</strong> the file travels directly between your device and Google. The sign-in token Google issues is stored inside your encrypted vault on your device. Neither the file nor the token is sent to the developer or to anyone else.</li>
+    <li><strong>Sharing:</strong> Marsa does not transfer, sell or share Google user data with third parties, does not use it for advertising, and does not use it to develop or train AI or machine-learning models. No person other than you can read it.</li>
+  </ul>
+  <p>Marsa's use and transfer of information received from Google APIs adheres to the <a href="https://developers.google.com/terms/api-services-user-data-policy">Google API Services User Data Policy</a>, including the Limited Use requirements.</p>
+  <p>To withdraw access, open <a href="https://myaccount.google.com/connections">your Google account's third-party connections</a> and remove Marsa. That page also lets you delete the data Marsa stored in your Drive.</p>
+
+  <h2>Dropbox</h2>
+  <p>If you choose Dropbox, the same applies: you sign in on Dropbox's page, Marsa is limited to its own app folder, and it stores only the encrypted vault file there. You can disconnect it under Connected apps in your Dropbox settings.</p>
+
+  <h2>Deleting your data</h2>
+  <p>Deleting a vault in the app, or uninstalling the app and removing its data folder, removes the local copy. A synced copy is a file in a location you control; delete it there.</p>
+
+  <h2>Changes and contact</h2>
+  <p>Changes to this policy are published on this page, and its history is public in the <a href="https://github.com/AdnanBolifa/marsa/commits/main/docs/privacy.html">project repository</a>. For questions, open an issue at <a href="https://github.com/AdnanBolifa/marsa/issues">github.com/AdnanBolifa/marsa/issues</a>.</p>
+
+  <footer class="muted"><a href="./">Back to Marsa</a></footer>
+</main>
+</body>
+</html>
