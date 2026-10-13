@@ -436,8 +436,6 @@ class _TabStrip extends StatelessWidget {
     final active = ws.active;
     final snippets = ws.vault.data.snippets.all.toList()
       ..sort((a, b) => a.label.compareTo(b.label));
-    final hosts = ws.vault.data.hosts.all.toList()
-      ..sort((a, b) => a.title.toLowerCase().compareTo(b.title.toLowerCase()));
     return Container(
       height: 40,
       decoration: BoxDecoration(
@@ -482,22 +480,10 @@ class _TabStrip extends StatelessWidget {
                         onClose: () => page.tabs.toList().forEach(ws.closeTab),
                       ),
                     ),
-                PopupMenuButton<VoidCallback>(
+                IconButton(
                   tooltip: 'New session',
                   icon: const Icon(Icons.add, size: 17),
-                  onSelected: (f) => f(),
-                  itemBuilder: (_) => [
-                    for (final h in hosts)
-                      PopupMenuItem(
-                        value: () => ws.openTerminal(h),
-                        child: Text(h.title, overflow: TextOverflow.ellipsis),
-                      ),
-                    if (hosts.isNotEmpty) const PopupMenuDivider(),
-                    PopupMenuItem(
-                      value: () => ws.show(Section.hosts),
-                      child: const Text('All hosts…'),
-                    ),
-                  ],
+                  onPressed: () => ws.show(Section.hosts),
                 ),
               ],
             ),

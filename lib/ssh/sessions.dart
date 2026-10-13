@@ -43,7 +43,12 @@ abstract class AppTab extends ChangeNotifier {
 
 class TerminalTab extends AppTab {
   TerminalTab(super.host, this._vault, this._ui) {
-    terminal.onOutput = (data) => _shell?.write(utf8.encode(data));
+    terminal.onOutput = (data) {
+      final shell = _shell;
+      if (shell != null) return shell.write(utf8.encode(data));
+      // Like most terminal apps: Enter on an ended session connects again.
+      if (state == TabState.closed && data.contains('\r')) start();
+    };
     terminal.onResize = (w, h, pw, ph) => _shell?.resizeTerminal(w, h, pw, ph);
   }
 
@@ -81,13 +86,16 @@ class TerminalTab extends AppTab {
         shell.done.catchError((_) {}).whenComplete(() {
           if (_shell != shell) return;
           close();
-          terminal.write('\r\n\x1b[2m[session closed]\x1b[0m\r\n');
+          terminal.write(
+            '\r\n\x1b[2m[session closed, press Enter to reconnect]\x1b[0m\r\n',
+          );
           _set(TabState.closed);
         }),
       );
     } catch (e) {
       close();
       terminal.write('\x1b[31m$e\x1b[0m\r\n');
+      terminal.write('\x1b[2m[press Enter to reconnect]\x1b[0m\r\n');
       _set(TabState.closed, e.toString());
     }
   }

@@ -25,8 +25,11 @@ Android and iOS are planned on the same codebase.
   Termius uses for its own CSV import), a PuTTY registry export or, on
   Windows, PuTTY directly, and MobaXterm session files. The format is
   detected from the file.
-- **Terminal**: xterm-compatible, 256/true colour, copy/paste, reconnect,
-  four colour schemes.
+- **Terminal**: xterm-compatible, 256/true colour, four colour schemes.
+  Drag to select text, then Ctrl+C (or Ctrl+Shift+C; Cmd+C on a Mac) or a
+  right click copies it; Ctrl+C with nothing selected still interrupts. A
+  right click with nothing selected pastes. When a session ends, press
+  Enter to reconnect.
 - **Tiling**: drag a tab onto the working area to split it left, right, above
   or below another session; drag dividers to resize, drag a tile's title bar
   to rearrange. A split is a single entry in the tab strip, so other tabs
@@ -34,7 +37,10 @@ Android and iOS are planned on the same codebase.
 - **SFTP**: two panes, each showing this computer or any saved host, so
   files and whole folders copy computer to server or **server to server**
   (relayed through the app; the servers need no access to each other). With
-  progress, rename, delete, new folder and permissions.
+  progress, rename, delete, new folder and permissions. Click to tick a file
+  or folder, double-click a folder to open it. Drag files and folders onto
+  the other pane to copy them there, or onto a folder (in either pane) to
+  copy or move them into it; dragging a ticked item takes everything ticked.
 - **Keychain**: generate Ed25519 or RSA keys, import existing ones (including
   passphrase-protected), copy the public key, install it on a host in one
   click. **Identities** let many hosts share one username/password/key.
@@ -179,7 +185,8 @@ Per-device data is in the user's application-support directory
 - The macOS build runs without the App Sandbox, because an SFTP client needs
   to read and write files anywhere you choose.
 - Not implemented yet: local terminal, SSH agent forwarding, Mosh/Telnet/serial,
-  auto-lock and biometric unlock, drag and drop into the SFTP panes, resuming
+  auto-lock and biometric unlock, drag and drop from Finder or Explorer into
+  the SFTP panes, resuming
   interrupted transfers.
 
 ## Roadmap

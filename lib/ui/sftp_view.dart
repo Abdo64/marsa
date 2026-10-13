@@ -1,3 +1,4 @@
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 
 import '../platform/sandbox.dart';
@@ -21,13 +22,19 @@ class PaneController extends ChangeNotifier {
   Iterable<FileEntry> get visible =>
       showHidden ? entries : entries.where((e) => !e.name.startsWith('.'));
 
+  int _opening = 0;
+
   Future<void> open([String? target]) async {
+    // Only the latest request counts: a slow listing that finishes after a
+    // newer one must not take the pane back to where it was.
+    final ticket = ++_opening;
     loading = true;
     error = null;
     _notify();
     try {
       final dest = target ?? (path.isEmpty ? await backend.home() : path);
       final list = await backend.list(dest);
+      if (ticket != _opening) return;
       list.sort(
         (a, b) => a.isDir != b.isDir
             ? (a.isDir ? -1 : 1)
@@ -38,11 +45,25 @@ class PaneController extends ChangeNotifier {
       entries = list;
       selected.retainAll(list.map((e) => e.name));
     } catch (e) {
+      if (ticket != _opening) return;
       // Stay where we were; only the attempted folder failed.
       error = e.toString();
     }
     loading = false;
     _notify();
+  }
+
+  String? _lastClick;
+  DateTime _lastClickAt = DateTime(0);
+
+  /// Records a click on [name] and says whether it completes a double click.
+  bool doubleClick(String name) {
+    final now = DateTime.now();
+    final twice =
+        _lastClick == name && now.difference(_lastClickAt) <= kDoubleTapTimeout;
+    _lastClick = twice ? null : name;
+    _lastClickAt = now;
+    return twice;
   }
 
   void toggle(String name) {
@@ -64,6 +85,13 @@ class PaneController extends ChangeNotifier {
     _disposed = true;
     super.dispose();
   }
+}
+
+/// Files being dragged out of a pane.
+class FileDrag {
+  FileDrag(this.pane, this.items);
+  final PaneController pane;
+  final List<FileEntry> items;
 }
 
 class SftpTabView extends StatefulWidget {
@@ -111,27 +139,43 @@ class _SftpTabViewState extends State<SftpTabView> {
     super.dispose();
   }
 
-  Future<void> _send(PaneController from, PaneController to) async {
-    final items = from.entries
-        .where((e) => from.selected.contains(e.name))
-        .toList();
+  Future<void> _send(PaneController from, PaneController to) => _copy(
+    from,
+    from.entries.where((e) => from.selected.contains(e.name)).toList(),
+    to,
+    to.path,
+  );
+
+  /// Copies [items] from [from]'s folder into [dest] on [to]'s side.
+  Future<void> _copy(
+    PaneController from,
+    List<FileEntry> items,
+    PaneController to,
+    String dest,
+  ) async {
+    List<FileEntry> there;
+    try {
+      there = dest == to.path ? to.entries : await to.backend.list(dest);
+    } catch (_) {
+      there = const [];
+    }
     final clash = items
-        .where((e) => to.entries.any((x) => x.name == e.name))
+        .where((e) => there.any((x) => x.name == e.name))
         .map((e) => e.name)
         .toList();
+    if (!mounted) return;
     if (clash.isNotEmpty &&
         !await confirm(
           context,
           'Replace existing items?',
           '${clash.take(5).join(', ')}${clash.length > 5 ? ' and ${clash.length - 5} more' : ''} '
-              'already exist in ${to.path} on ${to.backend.label}. Files '
+              'already exist in $dest on ${to.backend.label}. Files '
               'with the same name are overwritten.',
           action: 'Replace',
         )) {
       return;
     }
-    from.selected.clear();
-    final dest = to.path;
+    from.selected.removeAll(items.map((e) => e.name));
     final src = from.path;
     final jobs = [
       for (final e in items)
@@ -140,6 +184,37 @@ class _SftpTabViewState extends State<SftpTabView> {
     setState(() {});
     await Future.wait(jobs);
     if (mounted && to.path == dest) await to.open();
+  }
+
+  /// Moves [items] into the folder [dest] on the same side.
+  Future<void> _move(
+    PaneController pane,
+    List<FileEntry> items,
+    String dest,
+  ) async {
+    final b = pane.backend;
+    try {
+      final there = await b.list(dest);
+      final clash = items.where((e) => there.any((x) => x.name == e.name));
+      if (clash.isNotEmpty) {
+        if (mounted) toast(context, '${clash.first.name} is already in $dest');
+        return;
+      }
+      for (final e in items) {
+        await b.rename(b.join(pane.path, e.name), b.join(dest, e.name));
+      }
+    } catch (e) {
+      if (mounted) toast(context, e.toString());
+    }
+    await pane.open();
+  }
+
+  /// Files dropped on [to] at the folder [dest]: copied from the other
+  /// side, moved within the same one.
+  Future<void> _drop(FileDrag drag, PaneController to, String dest) {
+    if (drag.pane != to) return _copy(drag.pane, drag.items, to, dest);
+    if (dest == to.path) return Future.value();
+    return _move(to, drag.items, dest);
   }
 
   /// The pane header: what this side shows, and a menu to show something
@@ -229,6 +304,7 @@ class _SftpTabViewState extends State<SftpTabView> {
         // the second.
         forward: i == 0,
         onSend: other == null ? null : () => _send(pane, other),
+        onDrop: (drag, dest) => _drop(drag, pane, dest),
         roomy: width >= 440,
       );
     }
@@ -326,6 +402,7 @@ class _Pane extends StatelessWidget {
     this.source, {
     required this.forward,
     required this.onSend,
+    required this.onDrop,
     required this.roomy,
   });
   final PaneController pane;
@@ -338,6 +415,9 @@ class _Pane extends StatelessWidget {
 
   /// Null while the other side has nothing to copy to.
   final VoidCallback? onSend;
+
+  /// Files dragged here, to land in the folder given.
+  final void Function(FileDrag drag, String dest) onDrop;
 
   /// Wide enough for the permission and date columns.
   final bool roomy;
@@ -608,91 +688,177 @@ class _Pane extends StatelessWidget {
                 ),
               ),
             Expanded(
-              child: items.isEmpty && !pane.loading
-                  ? Center(child: Text('Empty folder', style: small))
-                  : ListView.builder(
-                      itemCount: items.length,
-                      itemExtent: 32,
-                      itemBuilder: (context, i) {
-                        final e = items[i];
-                        final on = pane.selected.contains(e.name);
-                        return InkWell(
-                          onTap: () => e.isDir
-                              ? pane.open(pane.backend.join(pane.path, e.name))
-                              : pane.toggle(e.name),
-                          child: Container(
-                            color: on
-                                ? scheme.primary.withValues(alpha: .12)
-                                : null,
-                            padding: const EdgeInsets.only(right: 14),
-                            child: Row(
-                              children: [
-                                SizedBox(
-                                  width: 40,
-                                  child: Transform.scale(
-                                    scale: .82,
-                                    child: Checkbox(
-                                      value: on,
-                                      onChanged: (_) => pane.toggle(e.name),
+              // Files dragged from the other side land in this folder.
+              child: DragTarget<FileDrag>(
+                onWillAcceptWithDetails: (d) => d.data.pane != pane,
+                onAcceptWithDetails: (d) => onDrop(d.data, pane.path),
+                builder: (context, candidates, _) => Container(
+                  decoration: candidates.isEmpty
+                      ? null
+                      : BoxDecoration(
+                          color: scheme.primary.withValues(alpha: .06),
+                          border: Border.all(color: scheme.primary, width: 2),
+                        ),
+                  child: items.isEmpty && !pane.loading
+                      ? Center(child: Text('Empty folder', style: small))
+                      : ListView.builder(
+                          itemCount: items.length,
+                          itemExtent: 32,
+                          itemBuilder: (context, i) {
+                            final e = items[i];
+                            final on = pane.selected.contains(e.name);
+                            // Dragging a ticked row takes everything ticked.
+                            final dragged = on ? chosen : [e];
+                            Widget row(bool target) => InkWell(
+                              // One click ticks, a double click opens a folder.
+                              onTap: () {
+                                if (!pane.doubleClick(e.name)) {
+                                  return pane.toggle(e.name);
+                                }
+                                if (e.isDir) {
+                                  pane.open(
+                                    pane.backend.join(pane.path, e.name),
+                                  );
+                                }
+                              },
+                              child: Container(
+                                color: target
+                                    ? scheme.primary.withValues(alpha: .24)
+                                    : on
+                                    ? scheme.primary.withValues(alpha: .12)
+                                    : null,
+                                padding: const EdgeInsets.only(right: 14),
+                                child: Row(
+                                  children: [
+                                    SizedBox(
+                                      width: 40,
+                                      child: Transform.scale(
+                                        scale: .82,
+                                        child: Checkbox(
+                                          value: on,
+                                          onChanged: (_) => pane.toggle(e.name),
+                                        ),
+                                      ),
                                     ),
-                                  ),
-                                ),
-                                Icon(
-                                  e.isDir
-                                      ? Icons.folder_rounded
-                                      : Icons.insert_drive_file_outlined,
-                                  size: 16,
-                                  color: e.isDir
-                                      ? scheme.primary
-                                      : scheme.outline,
-                                ),
-                                const SizedBox(width: 10),
-                                Expanded(
-                                  child: Text(
-                                    e.name,
-                                    overflow: TextOverflow.ellipsis,
-                                    style: const TextStyle(fontSize: 13),
-                                  ),
-                                ),
-                                if (roomy)
-                                  SizedBox(
-                                    width: 44,
-                                    child: Text(
-                                      e.mode == null
-                                          ? ''
-                                          : e.mode!
-                                                .toRadixString(8)
-                                                .padLeft(3, '0'),
-                                      style: small?.merge(mono),
+                                    Icon(
+                                      e.isDir
+                                          ? Icons.folder_rounded
+                                          : Icons.insert_drive_file_outlined,
+                                      size: 16,
+                                      color: e.isDir
+                                          ? scheme.primary
+                                          : scheme.outline,
                                     ),
-                                  ),
-                                SizedBox(
-                                  width: 70,
-                                  child: Text(
-                                    e.isDir ? '—' : _size(e.size),
-                                    textAlign: TextAlign.end,
-                                    style: small,
-                                  ),
-                                ),
-                                if (roomy)
-                                  SizedBox(
-                                    width: 104,
-                                    child: Text(
-                                      _date(e.modified),
-                                      textAlign: TextAlign.end,
-                                      style: small,
+                                    const SizedBox(width: 10),
+                                    Expanded(
+                                      child: Text(
+                                        e.name,
+                                        overflow: TextOverflow.ellipsis,
+                                        style: const TextStyle(fontSize: 13),
+                                      ),
                                     ),
-                                  ),
-                              ],
-                            ),
-                          ),
-                        );
-                      },
-                    ),
+                                    if (roomy)
+                                      SizedBox(
+                                        width: 44,
+                                        child: Text(
+                                          e.mode == null
+                                              ? ''
+                                              : e.mode!
+                                                    .toRadixString(8)
+                                                    .padLeft(3, '0'),
+                                          style: small?.merge(mono),
+                                        ),
+                                      ),
+                                    SizedBox(
+                                      width: 70,
+                                      child: Text(
+                                        e.isDir ? '—' : _size(e.size),
+                                        textAlign: TextAlign.end,
+                                        style: small,
+                                      ),
+                                    ),
+                                    if (roomy)
+                                      SizedBox(
+                                        width: 104,
+                                        child: Text(
+                                          _date(e.modified),
+                                          textAlign: TextAlign.end,
+                                          style: small,
+                                        ),
+                                      ),
+                                  ],
+                                ),
+                              ),
+                            );
+                            final draggable = Draggable<FileDrag>(
+                              data: FileDrag(pane, dragged),
+                              dragAnchorStrategy: pointerDragAnchorStrategy,
+                              feedback: _DragFiles(dragged),
+                              child: e.isDir
+                                  // A folder takes files dropped on it, from
+                                  // either side, except itself.
+                                  ? DragTarget<FileDrag>(
+                                      onWillAcceptWithDetails: (d) =>
+                                          d.data.pane != pane ||
+                                          !d.data.items.any(
+                                            (x) => x.name == e.name,
+                                          ),
+                                      onAcceptWithDetails: (d) => onDrop(
+                                        d.data,
+                                        pane.backend.join(pane.path, e.name),
+                                      ),
+                                      builder: (context, candidates, _) =>
+                                          row(candidates.isNotEmpty),
+                                    )
+                                  : row(false),
+                            );
+                            return draggable;
+                          },
+                        ),
+                ),
+              ),
             ),
           ],
         );
       },
+    );
+  }
+}
+
+/// What follows the pointer while files are dragged.
+class _DragFiles extends StatelessWidget {
+  const _DragFiles(this.items);
+  final List<FileEntry> items;
+
+  @override
+  Widget build(BuildContext context) {
+    final t = Theme.of(context);
+    final folder = items.length == 1 && items.first.isDir;
+    return Material(
+      elevation: 6,
+      color: t.colorScheme.surfaceContainerHigh,
+      borderRadius: BorderRadius.circular(8),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(
+              items.length > 1
+                  ? Icons.file_copy_outlined
+                  : folder
+                  ? Icons.folder_rounded
+                  : Icons.insert_drive_file_outlined,
+              size: 15,
+            ),
+            const SizedBox(width: 8),
+            Text(
+              items.length == 1 ? items.first.name : '${items.length} items',
+              style: t.textTheme.labelLarge,
+            ),
+          ],
+        ),
+      ),
     );
   }
 }
