@@ -185,11 +185,25 @@ jobs:
     needs: [windows, macos]
     runs-on: ubuntu-latest
     steps:
+      - uses: actions/checkout@v4
+        with:
+          sparse-checkout: CHANGELOG.md
+          sparse-checkout-cone-mode: false
+      - name: Release notes
+        # This version's section of CHANGELOG.md, above GitHub's own list
+        # of merged changes.
+        run: |
+          version="${GITHUB_REF_NAME#v}"
+          awk -v v="$version" '
+            /^## / { on = ($2 == v); next }
+            on' CHANGELOG.md > release-notes.md
+          cat release-notes.md
       - uses: actions/download-artifact@v4
         with:
           merge-multiple: true
       - uses: softprops/action-gh-release@v2
         with:
+          body_path: release-notes.md
           generate_release_notes: true
           fail_on_unmatched_files: true
           files: |

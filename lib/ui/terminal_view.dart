@@ -38,17 +38,34 @@ class _TerminalTabViewState extends State<TerminalTabView> {
     if (widget.visible && !old.visible) _tab.focusNode.requestFocus();
   }
 
-  Future<void> _copyOrPaste() async {
+  /// Copies the selected text, if any, and clears the selection.
+  bool _copy() {
     final selection = _tab.controller.selection;
-    if (selection != null) {
-      await Clipboard.setData(
-        ClipboardData(text: _tab.terminal.buffer.getText(selection)),
-      );
-      _tab.controller.clearSelection();
-      return;
-    }
+    if (selection == null) return false;
+    Clipboard.setData(
+      ClipboardData(text: _tab.terminal.buffer.getText(selection)),
+    );
+    _tab.controller.clearSelection();
+    return true;
+  }
+
+  Future<void> _copyOrPaste() async {
+    if (_copy()) return;
     final clip = await Clipboard.getData(Clipboard.kTextPlain);
     if (clip?.text != null) _tab.terminal.paste(clip!.text!);
+  }
+
+  // Ctrl+C copies while text is selected and interrupts otherwise, like
+  // Windows Terminal. Ctrl+Shift+C (and Cmd+C on a Mac) always copies.
+  KeyEventResult _onKey(FocusNode node, KeyEvent event) {
+    if (event is! KeyDownEvent ||
+        event.logicalKey != LogicalKeyboardKey.keyC ||
+        !HardwareKeyboard.instance.isControlPressed ||
+        HardwareKeyboard.instance.isAltPressed) {
+      return KeyEventResult.ignored;
+    }
+    final shift = HardwareKeyboard.instance.isShiftPressed;
+    return _copy() || shift ? KeyEventResult.handled : KeyEventResult.ignored;
   }
 
   @override
@@ -80,6 +97,7 @@ class _TerminalTabViewState extends State<TerminalTabView> {
                   textStyle: TerminalStyle(fontSize: widget.settings.fontSize),
                   padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
                   onSecondaryTapDown: (_, _) => _copyOrPaste(),
+                  onKeyEvent: _onKey,
                 ),
               ),
               if (_tab.state == TabState.closed)
@@ -102,6 +120,13 @@ class _TerminalTabViewState extends State<TerminalTabView> {
                           style: t.textTheme.bodySmall,
                         ),
                       ),
+                      Text(
+                        'Press Enter or',
+                        style: t.textTheme.bodySmall?.copyWith(
+                          color: scheme.onSurfaceVariant,
+                        ),
+                      ),
+                      const SizedBox(width: 8),
                       FilledButton.tonalIcon(
                         onPressed: _tab.start,
                         icon: const Icon(Icons.refresh, size: 16),
