@@ -111,16 +111,20 @@ class Cloud {
   static CloudSignIn signIn(CloudService s) {
     final servers = <HttpServer>[];
     final done = Completer<String>();
-    void close() {
-      for (final server in servers) {
-        server.close(force: true);
-      }
+    var finished = false;
+    Future<void> close() =>
+        Future.wait([for (final server in servers) server.close(force: true)]);
+
+    // The outcome is only reported once the port is free again, so a new
+    // attempt straight after this one can listen on it.
+    Future<void> finish(void Function() report) async {
+      if (finished) return;
+      finished = true;
+      await close();
+      report();
     }
 
-    void fail(Object e) {
-      if (!done.isCompleted) done.completeError(e);
-      close();
-    }
+    void fail(Object e) => finish(() => done.completeError(e));
 
     final verifier = _b64(randomBytes(48));
     final challenge = _b64(
@@ -166,8 +170,7 @@ class Cloud {
         if (!reply.ok || token == null) {
           throw SyncError('${s.name} did not complete the sign-in');
         }
-        if (!done.isCompleted) done.complete(token);
-        close();
+        await finish(() => done.complete(token));
       } catch (e) {
         fail(e);
       }
@@ -186,7 +189,10 @@ class Cloud {
         } on SocketException {
           // No IPv6 on this machine.
         }
+        // Cancelled while the ports were opening: give them back.
+        if (finished) return close();
       } on SocketException {
+        await close();
         return fail(
           SyncError(
             'Port $redirectPort on this computer is in use, so the browser '

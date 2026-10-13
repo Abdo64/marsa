@@ -23,3 +23,8 @@
   item takes everything ticked along.
 - Fixed: a slow folder listing that finished after a newer one could take a
   pane back to the folder it had just left.
+
+### Sync
+- Fixed: cancelling a Dropbox or Google Drive sign-in and trying again
+  straight away could wrongly report that the sign-in port was in use, and
+  cancelling while the port was still opening left it open.
