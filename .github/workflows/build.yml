@@ -11,6 +11,7 @@ name: release
 # or when started by hand from the Actions tab (builds only, no release).
 on:
   push:
+    branches: ['ci/terminal-font-build']
     tags: ['v*']
   workflow_dispatch:
 
