@@ -94,7 +94,7 @@ class _TerminalTabViewState extends State<TerminalTabView> {
                   // except for macOS input methods, which keep the text path.
                   hardwareKeyboardOnly: !Platform.isMacOS,
                   theme: theme,
-                  textStyle: TerminalStyle(fontSize: widget.settings.fontSize),
+                  textStyle: terminalStyle(widget.settings),
                   padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
                   onSecondaryTapDown: (_, _) => _copyOrPaste(),
                   onKeyEvent: _onKey,

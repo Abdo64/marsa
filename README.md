@@ -25,7 +25,8 @@ Android and iOS are planned on the same codebase.
   Termius uses for its own CSV import), a PuTTY registry export or, on
   Windows, PuTTY directly, and MobaXterm session files. The format is
   detected from the file.
-- **Terminal**: xterm-compatible, 256/true colour, four colour schemes.
+- **Terminal**: xterm-compatible, 256/true colour, four colour schemes, and
+  configurable font family and size.
   Drag to select text, then Ctrl+C (or Ctrl+Shift+C; Cmd+C on a Mac) or a
   right click copies it; Ctrl+C with nothing selected still interrupts. A
   right click with nothing selected pastes. When a session ends, press

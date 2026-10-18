@@ -14,6 +14,7 @@ class AppSettings extends ChangeNotifier {
 
   /// A key of [terminalThemes], or `auto` to follow the app theme.
   String terminalTheme = 'auto';
+  String terminalFontFamily = defaultTerminalFontFamily;
   double fontSize = 13;
 
   /// App Store edition: the pass macOS issued for the user's `.ssh` folder,
@@ -29,6 +30,10 @@ class AppSettings extends ChangeNotifier {
         orElse: () => ThemeMode.system,
       );
       terminalTheme = j['terminalTheme'] as String? ?? 'auto';
+      final fontFamily = (j['terminalFontFamily'] as String?)?.trim();
+      terminalFontFamily = fontFamily == null || fontFamily.isEmpty
+          ? defaultTerminalFontFamily
+          : fontFamily;
       fontSize = (j['fontSize'] as num?)?.toDouble() ?? 13;
       sshFolder = j['sshFolder'] as String? ?? '';
     } on FormatException {
@@ -43,12 +48,50 @@ class AppSettings extends ChangeNotifier {
       jsonEncode({
         'themeMode': themeMode.name,
         'terminalTheme': terminalTheme,
+        'terminalFontFamily': terminalFontFamily,
         'fontSize': fontSize,
         if (sshFolder.isNotEmpty) 'sshFolder': sshFolder,
       }),
     );
   }
 }
+
+const defaultTerminalFontFamily = 'monospace';
+
+/// Common fixed-width fonts offered before the user enters a custom installed
+/// family.
+List<String> get terminalFontChoices {
+  if (Platform.isWindows) {
+    return const [
+      defaultTerminalFontFamily,
+      'Cascadia Mono',
+      'Cascadia Code',
+      'Consolas',
+      'Lucida Console',
+      'Courier New',
+    ];
+  }
+  if (Platform.isMacOS) {
+    return const [
+      defaultTerminalFontFamily,
+      'Menlo',
+      'Monaco',
+      'SF Mono',
+      'Courier New',
+    ];
+  }
+  return const [
+    defaultTerminalFontFamily,
+    'DejaVu Sans Mono',
+    'Liberation Mono',
+    'Ubuntu Mono',
+  ];
+}
+
+TerminalStyle terminalStyle(AppSettings settings) => TerminalStyle(
+  fontSize: settings.fontSize,
+  fontFamily: settings.terminalFontFamily,
+);
 
 /// Colours that have no slot in [ColorScheme].
 class Palette extends ThemeExtension<Palette> {

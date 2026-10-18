@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'dart:io';
 
 import 'package:dartssh2/dartssh2.dart';
@@ -38,6 +39,33 @@ void main() {
   late Directory tmp;
   setUp(() => tmp = Directory.systemTemp.createTempSync('marsa_term'));
   tearDown(() => tmp.deleteSync(recursive: true));
+
+  test('terminal font defaults, loads, and is saved', () async {
+    final file = File('${tmp.path}/settings.json');
+    expect(AppSettings(file).terminalFontFamily, defaultTerminalFontFamily);
+
+    await file.writeAsString(
+      jsonEncode({'terminalFontFamily': 'JetBrains Mono'}),
+    );
+    final settings = AppSettings(file);
+    await settings.load();
+    expect(settings.terminalFontFamily, 'JetBrains Mono');
+
+    settings.update(() => settings.terminalFontFamily = 'Menlo');
+    Map<String, dynamic>? saved;
+    for (var attempt = 0; attempt < 20; attempt++) {
+      await Future<void>.delayed(const Duration(milliseconds: 5));
+      try {
+        saved = jsonDecode(await file.readAsString()) as Map<String, dynamic>;
+      } on FormatException {
+        continue;
+      } on FileSystemException {
+        continue;
+      }
+      if (saved['terminalFontFamily'] == 'Menlo') break;
+    }
+    expect(saved?['terminalFontFamily'], 'Menlo');
+  });
 
   testWidgets('terminal text is selected by dragging and copied with Ctrl+C', (
     tester,
@@ -96,6 +124,17 @@ void main() {
     expect(selection, isNotNull);
     final selected = term.terminal.buffer.getText(selection);
     expect(selected, startsWith('hello'));
+
+    settings.update(() => settings.terminalFontFamily = 'Cascadia Mono');
+    await tester.pump();
+    final terminalView = tester.widget<TerminalView>(
+      find.byType(TerminalView),
+    );
+    expect(terminalView.textStyle.fontFamily, 'Cascadia Mono');
+    expect(
+      terminalView.textStyle.fontFamilyFallback,
+      contains(defaultTerminalFontFamily),
+    );
 
     String? copied;
     tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(

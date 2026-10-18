@@ -122,6 +122,25 @@ class SettingsPage extends StatelessWidget {
     await _vault.commit();
   }
 
+  Future<void> _chooseCustomTerminalFont(BuildContext context) async {
+    final current = settings.terminalFontFamily == defaultTerminalFontFamily
+        ? ''
+        : settings.terminalFontFamily;
+    final result = await promptFields(
+      context,
+      'Custom terminal font',
+      message:
+          'Enter the family name of an installed monospaced font. If it is '
+          'not available, Marsa uses its default monospace font.',
+      labels: ['Font family'],
+      initial: [current],
+      action: 'Use font',
+    );
+    final family = result?.first.trim() ?? '';
+    if (family.isEmpty) return;
+    settings.update(() => settings.terminalFontFamily = family);
+  }
+
   @override
   Widget build(BuildContext context) {
     final t = Theme.of(context);
@@ -266,6 +285,71 @@ class SettingsPage extends StatelessWidget {
                             onChanged: (v) => settings.update(
                               () => settings.terminalTheme = v!,
                             ),
+                          ),
+                        ),
+                      ),
+                      row(
+                        'Terminal font',
+                        'Choose a common font or enter an installed family. '
+                            'Open terminals update immediately.',
+                        SizedBox(
+                          width: 340,
+                          child: Row(
+                            children: [
+                              Expanded(
+                                child: DropdownButtonFormField<String>(
+                                  key: ValueKey(settings.terminalFontFamily),
+                                  initialValue: settings.terminalFontFamily,
+                                  isExpanded: true,
+                                  icon: const Icon(Icons.unfold_more, size: 16),
+                                  style: t.textTheme.bodyLarge,
+                                  items: [
+                                    for (final family in terminalFontChoices)
+                                      DropdownMenuItem(
+                                        value: family,
+                                        child: Text(
+                                          family == defaultTerminalFontFamily
+                                              ? 'System monospace'
+                                              : family,
+                                          overflow: TextOverflow.ellipsis,
+                                          style: t.textTheme.bodyLarge
+                                              ?.copyWith(fontFamily: family),
+                                        ),
+                                      ),
+                                    if (!terminalFontChoices.contains(
+                                      settings.terminalFontFamily,
+                                    ))
+                                      DropdownMenuItem(
+                                        value: settings.terminalFontFamily,
+                                        child: Text(
+                                          settings.terminalFontFamily,
+                                          overflow: TextOverflow.ellipsis,
+                                          style: t.textTheme.bodyLarge
+                                              ?.copyWith(
+                                                fontFamily: settings
+                                                    .terminalFontFamily,
+                                              ),
+                                        ),
+                                      ),
+                                  ],
+                                  onChanged: (family) {
+                                    if (family != null) {
+                                      settings.update(
+                                        () =>
+                                            settings.terminalFontFamily = family,
+                                      );
+                                    }
+                                  },
+                                ),
+                              ),
+                              const SizedBox(width: 8),
+                              OutlinedButton(
+                                onPressed: () => _chooseCustomTerminalFont(
+                                  context,
+                                ),
+                                child: const Text('Custom…'),
+                              ),
+                            ],
                           ),
                         ),
                       ),

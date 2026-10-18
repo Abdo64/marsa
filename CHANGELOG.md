@@ -1,5 +1,12 @@
 # Changelog
 
+## Unreleased
+
+### Terminal
+- Choose a terminal font from common platform monospace families, or enter any
+  installed font family. The choice is saved per device and updates every open
+  terminal immediately.
+
 ## 0.4.2
 
 ### Terminal
